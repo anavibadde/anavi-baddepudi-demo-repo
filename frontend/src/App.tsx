@@ -37,15 +37,21 @@ export default function App() {
 
   useEffect(refresh, [refresh]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (error) return <main className="shell error">{error}</main>;
   if (!config || !viewer) return <main className="shell">Loading…</main>;
 
   const pendingCount = requests.filter((request) => request.status === "pending").length;
 
   return (
-    <main className="shell">
-      <div className="banner">{config.demo_notice}</div>
-
+    <main className={selectedId === null ? "shell" : "shell drawer-open"}>
       <header className="topbar">
         <h1>Refund review</h1>
         <label className="viewer">
@@ -97,24 +103,23 @@ export default function App() {
         </div>
       </section>
 
-      <div className="layout">
-        <RequestTable
-          requests={requests}
+      <RequestTable
+        requests={requests}
+        config={config}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
+
+      {selectedId !== null && (
+        <RequestDetail
+          key={`${viewer.id}-${selectedId}`}
+          requestId={selectedId}
+          viewer={viewer}
           config={config}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
+          onDecided={refresh}
+          onClose={() => setSelectedId(null)}
         />
-        {selectedId !== null && (
-          <RequestDetail
-            key={`${viewer.id}-${selectedId}`}
-            requestId={selectedId}
-            viewer={viewer}
-            config={config}
-            onDecided={refresh}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
-      </div>
+      )}
 
       {composing && (
         <NewRequestForm

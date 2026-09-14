@@ -8,6 +8,7 @@
   --red: #b42318;
   --amber: #b54708;
   --blue: #1d4ed8;
+  --drawer-width: 420px;
 }
 
 * {
@@ -24,24 +25,19 @@ body {
 .shell {
   max-width: 1240px;
   margin: 0 auto;
-  padding: 0 20px 40px;
+  padding: 0 20px 64px;
+  transition: padding-right 0.18s ease;
 }
 
-.banner {
-  background: #fff6e5;
-  border: 1px solid #f2d8a7;
-  color: var(--amber);
-  padding: 8px 12px;
-  border-radius: 0 0 8px 8px;
-  font-size: 13px;
-  text-align: center;
+.shell.drawer-open {
+  padding-right: calc(var(--drawer-width) + 20px);
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 20px 0 12px;
+  margin: 32px 0 24px;
 }
 
 .topbar h1 {
@@ -71,8 +67,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 16px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
@@ -87,7 +83,7 @@ textarea {
   border: 1px solid var(--line);
   background: var(--card);
   border-radius: 999px;
-  padding: 5px 12px;
+  padding: 7px 14px;
   cursor: pointer;
   text-transform: capitalize;
   color: var(--muted);
@@ -139,18 +135,6 @@ button.link {
   padding: 4px;
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: 16px;
-  align-items: start;
-}
-
-.layout:has(> aside:only-child),
-.layout > table:only-child {
-  grid-column: 1 / -1;
-}
-
 table.queue {
   width: 100%;
   border-collapse: collapse;
@@ -166,12 +150,12 @@ table.queue {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  padding: 10px 12px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
 }
 
 .queue td {
-  padding: 10px 12px;
+  padding: 16px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -254,19 +238,32 @@ table.queue {
 }
 
 .detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--drawer-width), 100%);
   background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 16px;
-  position: sticky;
-  top: 16px;
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 24px rgba(17, 24, 39, 0.06);
+  padding: 28px 24px 40px;
+  overflow-y: auto;
+  animation: slide-in 0.18s ease;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
 }
 
 .detail header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 8px;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
 .detail h2 {
@@ -282,14 +279,14 @@ table.queue {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
-  margin: 20px 0 8px;
+  margin: 32px 0 16px;
 }
 
 .facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 14px 0;
+  gap: 20px;
+  margin: 0 0 24px;
 }
 
 .facts dt {
@@ -305,8 +302,8 @@ table.queue {
   background: #f9fafb;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 8px 10px;
-  margin: 0;
+  padding: 12px 14px;
+  margin: 0 0 16px;
 }
 
 .callout {
@@ -314,7 +311,8 @@ table.queue {
   border: 1px solid #f2d8a7;
   color: var(--amber);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
 }
 
 .callout.muted {
@@ -326,8 +324,8 @@ table.queue {
 .decision {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 24px;
 }
 
 .decision label,
@@ -371,12 +369,12 @@ table.queue {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
 }
 
 .history li {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .dot {
