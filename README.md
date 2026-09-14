@@ -1,7 +1,8 @@
-# Refund review (demo)
+# Internal tools (demo)
 
-A queue for reviewing customer refund requests: an analyst submits one, a reviewer
-approves or rejects it, and both see the decision history.
+One shell, one login, one users table, with each tool behind its own grant. The
+first tool is **refund review** at `/refunds`: an analyst submits a request, a
+reviewer approves or rejects it, and both see the decision history.
 
 **Nothing is executed.** Approving a request records a decision; no payment provider
 is called and no money moves.
@@ -30,6 +31,23 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Access: signing in grants nothing
+
+Signing in proves who you are. What you can open is a separate, per-tool grant
+in the `entitlements` table, so a shared login is not a shared key. The home
+page lists only the tools you hold, and each tool re-checks the grant on every
+call — a caller without it gets **404**, not 403, because a refusal that admits
+the tool exists is itself information.
+
+Inside a tool the grant carries a level: `viewer` reads, `contributor` submits,
+`reviewer` decides, `admin` is unrestricted. These are per tool and do not come
+from the platform role — the one exception is platform admins, who hold every
+tool, since a demo whose admin can be locked out of the thing they administer
+demonstrates nothing.
+
+The level opens the door; it does not widen it. A refunds `reviewer` still only
+sees their own line of the org chart under the rules below.
 
 ## Signing in
 
@@ -69,20 +87,23 @@ flowchart LR
     F[New request form]
   end
 
-  subgraph API["FastAPI (app/main.py)"]
-    R[rules.py<br/>visibility + decision policy]
-    K[risk.py<br/>flag heuristics]
+  subgraph API["FastAPI"]
+    S[main.py — login, sessions, grants]
+    R[refunds/rules.py — visibility + decision policy]
+    K[refunds/risk.py — flag heuristics]
   end
 
   subgraph DB["SQLite"]
     U[(users)]
+    E[(entitlements)]
     RR[(refund_requests)]
     DE[(decision_events)]
   end
 
-  Q -- "GET /api/requests" --> API
-  D -- "GET /api/requests/:id<br/>POST /api/requests/:id/decision" --> API
-  F -- "POST /api/requests" --> API
+  Q -- "GET /api/refunds/requests" --> API
+  D -- "GET and POST /api/refunds/requests/:id" --> API
+  F -- "POST /api/refunds/requests" --> API
+  S -- "which tools you hold" --> E
   R -- "reads the org chart" --> U
   K -- "reads refund history" --> RR
   API -- "writes" --> RR
@@ -304,15 +325,19 @@ write-back integration is the project.
 
 ## Layout
 
+Shared platform code sits at the top level; each tool owns a package below it
+and keeps its own rules there.
+
 ```
-backend/app/auth.py     password hashing and session tokens
-backend/app/models.py   tables
-backend/app/aging.py    pending-age SLA tiers
-backend/app/risk.py     flag heuristics and the escalation rule
-backend/app/rules.py    visibility and decision authorization
-backend/app/main.py     HTTP layer
-backend/app/seed.py     fake org chart and ~54 requests
-frontend/src/           queue, detail panel, submit form
+backend/app/auth.py            password hashing and session tokens
+backend/app/models.py          users, sessions, entitlements
+backend/app/entitlements.py    the tool registry and per-tool grant checks
+backend/app/deps.py            current user, and the gate on holding a tool
+backend/app/main.py            shell HTTP layer: login, users, /api/me/apps
+backend/app/seed.py            fake org chart, grants and ~54 requests
+backend/app/refunds/           refund models, risk, rules and routes
+frontend/src/shell/            login, home tiles, identity switcher, routing
+frontend/src/apps/refunds/     queue, detail drawer, submit form
 ```
 
 ## Tests and lint

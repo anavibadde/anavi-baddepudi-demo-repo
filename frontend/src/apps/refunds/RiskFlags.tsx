@@ -1,4 +1,4 @@
-import { humanize } from "../format";
+import { humanize } from "../../format";
 
 interface Props {
   flags: string[];

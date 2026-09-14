@@ -5,7 +5,15 @@ import type { User } from "../types";
 
 /** Demo-only identity switcher. Picking someone mints a real session for them,
  * so the queue that comes back is theirs under the ordinary rules. */
-export function ViewAs({ viewer, onSwitched }: { viewer: User; onSwitched: (user: User) => void }) {
+export function ViewAs({
+  viewer,
+  notice,
+  onSwitched,
+}: {
+  viewer: User;
+  notice: string;
+  onSwitched: (user: User) => void;
+}) {
   const [users, setUsers] = useState<User[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -33,8 +41,8 @@ export function ViewAs({ viewer, onSwitched }: { viewer: User; onSwitched: (user
   }
 
   return (
-    <label className="view-as">
-      <span className="small muted">Viewing as</span>
+    <label className="view-as" title={notice}>
+      <span className="small muted">Viewing as (demo backdoor)</span>
       <select
         value={viewer.id}
         disabled={busy || users.length === 0}

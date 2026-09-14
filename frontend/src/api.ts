@@ -1,12 +1,4 @@
-import type {
-  Config,
-  LoginResult,
-  NewRequest,
-  RefundRequestDetail,
-  RequestPage,
-  Status,
-  User,
-} from "./types";
+import type { AppSummary, LoginResult, PlatformConfig, User } from "./types";
 
 const TOKEN_KEY = "refund-review-token";
 
@@ -31,7 +23,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -78,36 +70,7 @@ export const getMe = () => request<User>("/auth/me");
 
 export const getUsers = () => request<User[]>("/users");
 
-export const getConfig = () => request<Config>("/config");
+export const getConfig = () => request<PlatformConfig>("/config");
 
-export function getRequests(filters: {
-  status?: Status | "";
-  flagged?: boolean;
-  limit?: number;
-  offset?: number;
-}): Promise<RequestPage> {
-  const params = new URLSearchParams();
-  if (filters.status) params.set("status", filters.status);
-  if (filters.flagged) params.set("flagged", "true");
-  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
-  if (filters.offset) params.set("offset", String(filters.offset));
-  const query = params.toString();
-  return request<RequestPage>(`/requests${query ? `?${query}` : ""}`);
-}
-
-export const getRequest = (id: number) => request<RefundRequestDetail>(`/requests/${id}`);
-
-export const createRequest = (payload: NewRequest) =>
-  request<RefundRequestDetail>("/requests", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-
-export const decideRequest = (
-  id: number,
-  payload: { action: "approved" | "rejected"; comment: string; confirm_risk: boolean },
-) =>
-  request<RefundRequestDetail>(`/requests/${id}/decision`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+/** Tools this person holds. The server repeats the check on every tool call. */
+export const getApps = () => request<AppSummary[]>("/me/apps");

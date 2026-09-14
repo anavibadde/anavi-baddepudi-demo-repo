@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.auth import hash_password, issue_token  # noqa: E402
 from app.db import SessionLocal, create_all, engine  # noqa: E402
+from app.entitlements import grant  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import Base, Role, User  # noqa: E402
+from app.models import AppRole, AppSlug, Base, Role, User  # noqa: E402
 
 TEST_PASSWORD = "test-password"
 
@@ -65,6 +66,13 @@ def org(session: Session) -> dict[str, User]:
         password_hash=pw,
     )
     session.add_all([analyst_a, analyst_b])
+    session.flush()
+    # Everyone here holds refunds; tests that care about missing access revoke
+    # it explicitly rather than relying on the fixture leaving someone out.
+    for user in (manager_a, manager_b):
+        grant(session, user, AppSlug.refunds, AppRole.reviewer)
+    for user in (analyst_a, analyst_b):
+        grant(session, user, AppSlug.refunds, AppRole.contributor)
     session.commit()
     return {
         "admin": admin,

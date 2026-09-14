@@ -45,10 +45,10 @@ def test_wrong_password_and_unknown_id_are_indistinguishable(client, org):
 
 def test_logout_revokes_the_token(client, org):
     headers = auth(org["manager_a"])
-    assert client.get("/api/requests", headers=headers).status_code == 200
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 200
 
     assert client.post("/api/auth/logout", headers=headers).status_code == 204
-    assert client.get("/api/requests", headers=headers).status_code == 401
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 401
 
 
 def test_expired_token_is_rejected(client, org):
@@ -59,7 +59,7 @@ def test_expired_token_is_rejected(client, org):
         record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         session.commit()
 
-    assert client.get("/api/requests", headers=headers).status_code == 401
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 401
 
 
 def test_demo_switch_hands_back_a_real_session_for_the_target(client, org):

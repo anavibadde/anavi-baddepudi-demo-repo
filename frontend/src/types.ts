@@ -1,6 +1,7 @@
 export type Role = "analyst" | "manager" | "admin";
-export type Status = "pending" | "approved" | "rejected";
-export type Action = "submitted" | "approved" | "rejected";
+
+/** Level inside one tool. Held per tool, not inherited from the platform role. */
+export type AppRole = "viewer" | "contributor" | "reviewer" | "admin";
 
 export interface User {
   id: number;
@@ -17,66 +18,15 @@ export interface LoginResult {
   user: User;
 }
 
-export interface DecisionEvent {
-  id: number;
-  action: Action;
-  comment: string;
-  created_at: string;
-  actor: User;
+export interface AppSummary {
+  slug: string;
+  name: string;
+  description: string;
+  path: string;
+  app_role: AppRole;
 }
 
-export interface RefundRequest {
-  id: number;
-  customer_id: string;
-  customer_name: string;
-  order_id: string;
-  reason: string;
-  amount_cents: number;
-  currency: string;
-  note: string;
-  status: Status;
-  risk_flags: string[];
-  requires_admin: boolean;
-  created_at: string;
-  decided_at: string | null;
-  submitter: User;
-  decider: User | null;
-  can_decide: boolean;
-  decide_blocked_reason: string | null;
-  age_hours: number;
-  aging: "due" | "overdue" | null;
-  unassigned: boolean;
-}
-
-export interface RequestPage {
-  items: RefundRequest[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export interface RefundRequestDetail extends RefundRequest {
-  events: DecisionEvent[];
-}
-
-export interface Config {
-  high_value_cents: number;
-  reasons: string[];
-  flag_labels: Record<string, string>;
-  aging_labels: Record<string, string>;
-  due_hours: number;
-  overdue_hours: number;
-  page_size: number;
+export interface PlatformConfig {
   demo_switch: boolean;
   demo_notice: string;
-}
-
-export interface NewRequest {
-  customer_id: string;
-  customer_name: string;
-  order_id: string;
-  reason: string;
-  amount_cents: number;
-  note: string;
-  idempotency_key: string;
 }

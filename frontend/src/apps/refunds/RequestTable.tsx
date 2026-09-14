@@ -1,10 +1,10 @@
-import { humanize, money, waited, when } from "../format";
-import type { Config, RefundRequest } from "../types";
+import { humanize, money, waited, when } from "../../format";
+import type { RefundRequest, RefundsConfig } from "./types";
 import { RiskFlags } from "./RiskFlags";
 
 interface Props {
   requests: RefundRequest[];
-  config: Config;
+  config: RefundsConfig;
   selectedId: number | null;
   onSelect: (id: number) => void;
 }
