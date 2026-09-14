@@ -21,6 +21,7 @@ from .auth import (
 from .db import create_all, get_session
 from .deps import bearer_token, current_user
 from .entitlements import apps_for
+from .flags.routes import router as flags_router
 from .models import Role, User
 from .refunds.routes import router as refunds_router
 from .schemas import AppOut, LoginIn, LoginOut, SwitchIn, UserOut, UserUpdate
@@ -47,6 +48,7 @@ app.add_middleware(
 )
 
 app.include_router(refunds_router)
+app.include_router(flags_router)
 
 
 @app.post("/api/auth/login", response_model=LoginOut)

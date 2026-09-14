@@ -588,3 +588,106 @@ table.queue {
 .modal .span {
   grid-column: 1 / -1;
 }
+
+.toggle {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toggle-on {
+  background: #e6f4ec;
+  color: var(--green);
+}
+
+.toggle-off {
+  background: #eef0f3;
+  color: var(--muted);
+}
+
+.dot-applied {
+  background: var(--green);
+}
+
+.dot-proposed {
+  background: var(--blue);
+}
+
+.dot-set_directly {
+  background: var(--amber);
+}
+
+.dot-withdrawn {
+  background: var(--muted);
+}
+
+.demo-surface {
+  margin-top: 28px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.demo-surface header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.demo-surface h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.fake-page {
+  position: relative;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.fake-page nav {
+  font-size: 13px;
+  color: var(--muted);
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fake-page.new-nav nav {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.fake-body {
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fake-banner {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff4e5;
+  color: var(--amber);
+}
+
+.fake-chat {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 13px;
+}

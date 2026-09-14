@@ -10,6 +10,15 @@ from sqlalchemy.orm import Session
 from .auth import hash_password
 from .db import SessionLocal, create_all, engine
 from .entitlements import grant
+from .flags.models import (
+    ChangeStatus,
+    Environment,
+    FeatureFlag,
+    FlagAction,
+    FlagChangeRequest,
+    FlagEvent,
+    FlagState,
+)
 from .models import AppRole, AppSlug, Base, Role, User, utcnow
 from .refunds.models import Action, DecisionEvent, Reason, RefundRequest, Status
 from .refunds.risk import compute_flags
@@ -40,6 +49,48 @@ REFUND_ROLES = {
     Role.manager: AppRole.reviewer,
     Role.analyst: AppRole.contributor,
 }
+
+# Flags is a narrower tool than refunds: most analysts hold nothing, so the
+# home page visibly differs per person. Ines proposes, Marco and Dana approve —
+# maker-checker needs at least two approvers who are not the proposer.
+FLAG_ROLES = {
+    "marco@example.com": AppRole.reviewer,
+    "dana@example.com": AppRole.reviewer,
+    "ines@example.com": AppRole.contributor,
+    "leo@example.com": AppRole.viewer,
+}
+
+# dev value, prod value
+FLAGS = [
+    (
+        "checkout.express_refunds",
+        "Express refunds at checkout",
+        "Offers an instant refund path instead of the review queue.",
+        True,
+        False,
+    ),
+    (
+        "support.chat_widget",
+        "Support chat widget",
+        "Shows the live chat launcher on customer-facing pages.",
+        True,
+        True,
+    ),
+    (
+        "pricing.annual_discount",
+        "Annual plan discount",
+        "Advertises the 20% annual discount on the pricing page.",
+        True,
+        False,
+    ),
+    (
+        "dashboard.new_nav",
+        "Redesigned navigation",
+        "Replaces the sidebar with the new top navigation.",
+        False,
+        False,
+    ),
+]
 
 CUSTOMERS = [
     ("CUS-1041", "Elena Fischer"),
@@ -100,7 +151,12 @@ def seed(session: Session, *, count: int = 54, rng: random.Random | None = None)
         app_role = REFUND_ROLES.get(user.role)
         if app_role is not None:
             grant(session, user, AppSlug.refunds, app_role)
+        flag_role = FLAG_ROLES.get(user.email)
+        if flag_role is not None:
+            grant(session, user, AppSlug.flags, flag_role)
     session.flush()
+
+    seed_flags(session, by_email)
 
     submitters = [u for u in by_email.values() if u.role is not Role.admin]
     now = utcnow()
@@ -167,6 +223,101 @@ def seed(session: Session, *, count: int = 54, rng: random.Random | None = None)
         session.flush()
 
     session.commit()
+
+
+def seed_flags(session: Session, by_email: dict[str, User]) -> None:
+    now = utcnow()
+    ines = by_email["ines@example.com"]
+    marco = by_email["marco@example.com"]
+    flags: dict[str, FeatureFlag] = {}
+    for key, name, description, dev, prod in FLAGS:
+        flag = FeatureFlag(key=key, name=name, description=description, created_at=now)
+        session.add(flag)
+        session.flush()
+        flags[key] = flag
+        for environment, enabled in ((Environment.dev, dev), (Environment.prod, prod)):
+            session.add(
+                FlagState(
+                    flag_id=flag.id,
+                    environment=environment,
+                    enabled=enabled,
+                    updated_at=now - timedelta(days=3),
+                    updated_by=ines.id,
+                )
+            )
+            session.add(
+                FlagEvent(
+                    flag_id=flag.id,
+                    environment=environment,
+                    action=FlagAction.set_directly,
+                    from_value=False,
+                    to_value=enabled,
+                    comment="Initial state.",
+                    actor_id=ines.id,
+                    created_at=now - timedelta(days=3),
+                )
+            )
+
+    # One prod change waiting on someone other than Ines, so the demo opens on
+    # a queue with something in it.
+    express = flags["checkout.express_refunds"]
+    request = FlagChangeRequest(
+        flag_id=express.id,
+        environment=Environment.prod,
+        from_value=False,
+        to_value=True,
+        reason="Soaked in dev for two weeks with no refund-queue regressions.",
+        status=ChangeStatus.pending,
+        requested_by=ines.id,
+        requested_at=now - timedelta(hours=20),
+    )
+    session.add(request)
+    session.flush()
+    session.add(
+        FlagEvent(
+            flag_id=express.id,
+            environment=Environment.prod,
+            action=FlagAction.proposed,
+            from_value=False,
+            to_value=True,
+            comment=request.reason,
+            actor_id=ines.id,
+            request_id=request.id,
+            created_at=request.requested_at,
+        )
+    )
+
+    # A closed one so the history is not empty on first load.
+    chat = flags["support.chat_widget"]
+    done = FlagChangeRequest(
+        flag_id=chat.id,
+        environment=Environment.prod,
+        from_value=False,
+        to_value=True,
+        reason="Support wants the launcher on for the holiday period.",
+        status=ChangeStatus.applied,
+        requested_by=ines.id,
+        requested_at=now - timedelta(days=2),
+        decided_by=marco.id,
+        decided_at=now - timedelta(days=2, hours=-3),
+        decision_note="Checked with support on staffing.",
+    )
+    session.add(done)
+    session.flush()
+    session.add(
+        FlagEvent(
+            flag_id=chat.id,
+            environment=Environment.prod,
+            action=FlagAction.applied,
+            from_value=False,
+            to_value=True,
+            comment=done.decision_note,
+            actor_id=marco.id,
+            request_id=done.id,
+            created_at=done.decided_at,
+        )
+    )
+    session.flush()
 
 
 def main() -> None:

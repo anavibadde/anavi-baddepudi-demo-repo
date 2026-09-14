@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getApps, getConfig, getMe, logout, setToken, storedToken } from "./api";
+import {
+  getApps,
+  getConfig,
+  getMe,
+  logout,
+  setToken,
+  storedToken,
+} from "./api";
+import { FlagsApp } from "./apps/flags/FlagsApp";
 import { RefundsApp } from "./apps/refunds/RefundsApp";
 import { Home } from "./shell/Home";
 import { LoginForm } from "./shell/LoginForm";
@@ -22,7 +30,11 @@ export default function App() {
   useEffect(() => {
     getConfig()
       .then(setConfig)
-      .catch(() => setError("Could not reach the API. Is the backend running on port 8000?"));
+      .catch(() =>
+        setError(
+          "Could not reach the API. Is the backend running on port 8000?",
+        ),
+      );
   }, []);
 
   useEffect(() => {
@@ -41,7 +53,10 @@ export default function App() {
       .catch(() => setApps([]));
   }, [viewer]);
 
-  const onDrawerChange = useCallback((open: boolean) => setDrawerOpen(open), []);
+  const onDrawerChange = useCallback(
+    (open: boolean) => setDrawerOpen(open),
+    [],
+  );
 
   function signedInAs(user: User) {
     setViewer(user);
@@ -81,7 +96,11 @@ export default function App() {
         </div>
         <div className="session">
           {config.demo_switch ? (
-            <ViewAs viewer={viewer} notice={config.demo_notice} onSwitched={switchedTo} />
+            <ViewAs
+              viewer={viewer}
+              notice={config.demo_notice}
+              onSwitched={switchedTo}
+            />
           ) : (
             <span className="muted">
               {viewer.name} <span className="small">({viewer.role})</span>
@@ -95,6 +114,13 @@ export default function App() {
         <RefundsApp
           // Remount per identity: a row selected as someone else must not stay
           // open against a queue they cannot see.
+          key={viewer.id}
+          viewer={viewer}
+          onSignedOut={() => setViewer(null)}
+          onDrawerChange={onDrawerChange}
+        />
+      ) : path === "/flags" && inTool ? (
+        <FlagsApp
           key={viewer.id}
           viewer={viewer}
           onSignedOut={() => setViewer(null)}

@@ -1,5 +1,7 @@
 export function money(cents: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+    cents / 100,
+  );
 }
 
 export function when(iso: string): string {
@@ -28,6 +30,12 @@ const BLOCKED_REASONS: Record<string, string> = {
   admin_approval_required: "Needs an admin: high value plus another risk flag",
   account_deactivated: "Your account is deactivated",
   not_found: "Not visible to you",
+  cannot_approve_own_request: "You proposed this change",
+  stale_request: "Production moved since this was proposed",
+  request_already_open: "A change is already open for this flag",
+  prod_requires_request: "Production needs a change request",
+  no_change: "That is already the current value",
+  not_your_request: "Only the person who proposed it can withdraw it",
 };
 
 export function blockedReason(reason: string | null): string | null {
