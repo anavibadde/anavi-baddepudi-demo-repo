@@ -5,6 +5,7 @@ import { LoginForm } from "./components/LoginForm";
 import { NewRequestForm } from "./components/NewRequestForm";
 import { RequestDetail } from "./components/RequestDetail";
 import { RequestTable } from "./components/RequestTable";
+import { ViewAs } from "./components/ViewAs";
 import "./App.css";
 import type { Config, RefundRequest, Status, User } from "./types";
 
@@ -65,6 +66,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  function switchedTo(user: User) {
+    setViewer(user);
+    setSelectedId(null);
+    setPages(1);
+  }
+
   async function signOut() {
     await logout();
     setViewer(null);
@@ -84,9 +91,13 @@ export default function App() {
       <header className="topbar">
         <h1>Refund review</h1>
         <div className="session">
-          <span className="muted">
-            {viewer.name} <span className="small">({viewer.role})</span>
-          </span>
+          {config.demo_switch ? (
+            <ViewAs viewer={viewer} onSwitched={switchedTo} />
+          ) : (
+            <span className="muted">
+              {viewer.name} <span className="small">({viewer.role})</span>
+            </span>
+          )}
           <button onClick={signOut}>Sign out</button>
         </div>
       </header>

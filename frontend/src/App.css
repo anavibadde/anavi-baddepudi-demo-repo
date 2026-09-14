@@ -51,6 +51,12 @@ body {
   gap: 12px;
 }
 
+.view-as {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .login-page {
   min-height: 100vh;
   display: grid;

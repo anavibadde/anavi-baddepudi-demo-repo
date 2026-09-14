@@ -29,6 +29,10 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=200)
 
 
+class SwitchIn(BaseModel):
+    user_id: int
+
+
 class LoginOut(BaseModel):
     token: str
     expires_at: datetime
