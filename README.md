@@ -257,6 +257,38 @@ change is configuration, not a log entry.
 Everything is appended to a per-flag history: direct dev changes, proposals,
 approvals, rejections and withdrawals, each with who and when.
 
+## KYC review (`/kyc`)
+
+The third tool, and back to recording decisions only — no vendor, no document
+store, no sanctions list. What it does model is how a review team actually
+divides the work.
+
+**One shared pool, not the org chart.** Refund visibility follows who reports to
+whom; KYC does not. Every entitled reviewer sees every case, and work is divided
+by claiming rather than by routing.
+
+**Claiming is a lock with a timer.** Taking a case writes the claim with a
+conditional update, so two reviewers clicking at once cannot both hold it — the
+loser is told someone else has it. A claim lapses after four hours, which is what
+stops a case being parked forever by someone who went on leave; the takeover is
+recorded as a distinct `claim_expired` event rather than quietly reassigning it.
+
+**Maker-checker.** The claim holder recommends approve or reject; that is not a
+decision. A different reviewer signs it off, and the backend refuses sign-off by
+the person who recommended it. Sign-off applies the *stored* recommendation, so
+the checker agrees or disagrees rather than substituting an outcome of their own.
+
+**Disagreement and missing documents both reopen the case.** A checker who
+disagrees sends it back to the pool for a fresh review cycle, and "request more
+info" parks it until the documents arrive. Neither edits the history: the cycle
+counter increments and the earlier events stay exactly where they are.
+
+```text
+new → claimed → recommended → approved
+                            → rejected
+                            → needs_info → new
+```
+
 ## Known gaps — read before reusing this on real money
 
 This is a review tool, not a refund system. The queue, the authorization and the

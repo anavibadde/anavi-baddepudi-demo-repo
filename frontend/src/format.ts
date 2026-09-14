@@ -36,6 +36,16 @@ const BLOCKED_REASONS: Record<string, string> = {
   prod_requires_request: "Production needs a change request",
   no_change: "That is already the current value",
   not_your_request: "Only the person who proposed it can withdraw it",
+  cannot_sign_off_own_recommendation: "You recommended this case",
+  claimed_by_someone_else: "Someone else is working this case",
+  already_yours: "You already hold this case",
+  not_your_claim: "Someone else holds the claim",
+  claim_required: "Claim the case before recommending",
+  awaiting_sign_off: "Waiting on a second reviewer",
+  awaiting_info: "Waiting on documents from the applicant",
+  no_recommendation: "Nothing has been recommended yet",
+  not_claimed: "Nobody holds this case",
+  not_awaiting_info: "This case is not waiting on documents",
 };
 
 export function blockedReason(reason: string | null): string | null {
