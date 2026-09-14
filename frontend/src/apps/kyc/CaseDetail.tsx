@@ -65,6 +65,9 @@ export function CaseDetail({
     }
   }
 
+  // Once a case is recommended or closed the claim no longer decides
+  // anything, so its timer is noise.
+  const claimIsLive = item.status === "new" || item.status === "claimed";
   const holdsClaim =
     item.claimer?.id === viewerId && !item.claim_expired && !item.decided_at;
   const awaitingSignOff = item.status === "recommended";
@@ -110,11 +113,13 @@ export function CaseDetail({
             {item.claimer ? (
               <>
                 {item.claimer.name}
-                <span className="muted small">
-                  {item.claim_expired
-                    ? " · lapsed, free to take"
-                    : ` · holds it for ${config.claim_hours}h`}
-                </span>
+                {claimIsLive && (
+                  <span className="muted small">
+                    {item.claim_expired
+                      ? " · lapsed, free to take"
+                      : ` · holds it for ${config.claim_hours}h`}
+                  </span>
+                )}
               </>
             ) : (
               <span className="muted">Unclaimed</span>

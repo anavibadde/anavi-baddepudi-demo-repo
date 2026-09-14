@@ -13,7 +13,8 @@ export function StatusBadge({ status }: { status: string }) {
 
 function claimCell(item: KycCase) {
   if (!item.claimer) return <span className="muted">Unclaimed</span>;
-  if (item.claim_expired) {
+  const claimIsLive = item.status === "new" || item.status === "claimed";
+  if (item.claim_expired && claimIsLive) {
     return (
       <span className="badge unassigned">{item.claimer.name} · lapsed</span>
     );

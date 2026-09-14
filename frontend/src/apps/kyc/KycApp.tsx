@@ -96,7 +96,10 @@ export function KycApp({
           <span className="muted small">
             {cases.length} cases
             {awaiting > 0 && (
-              <span className="overdue-count"> · {awaiting} need sign-off</span>
+              <span className="overdue-count">
+                {" "}
+                · {awaiting} awaiting sign-off
+              </span>
             )}
           </span>
         </div>
