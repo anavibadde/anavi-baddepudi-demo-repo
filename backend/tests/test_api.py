@@ -31,7 +31,7 @@ def decide(client, user, request_id, action, **payload):
 def listed_ids(client, user, **params):
     response = client.get("/api/requests", params=params, headers=auth(user))
     assert response.status_code == 200, response.text
-    return [r["id"] for r in response.json()]
+    return [r["id"] for r in response.json()["items"]]
 
 
 def test_analyst_sees_only_their_own(client, org):

@@ -13,6 +13,8 @@ export default function App() {
   const [viewer, setViewer] = useState<User | null>(null);
   const [restoring, setRestoring] = useState(storedToken() !== null);
   const [requests, setRequests] = useState<RefundRequest[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
   const [status, setStatus] = useState<Status | "">("pending");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -34,10 +36,15 @@ export default function App() {
       .finally(() => setRestoring(false));
   }, []);
 
+  // One request for however many pages are on screen, so refreshing after a
+  // decision doesn't collapse the list back to page one.
   const refresh = useCallback(() => {
-    if (!viewer) return;
-    getRequests({ status, flagged: flaggedOnly })
-      .then(setRequests)
+    if (!viewer || !config) return;
+    getRequests({ status, flagged: flaggedOnly, limit: config.page_size * pages })
+      .then((page) => {
+        setRequests(page.items);
+        setTotal(page.total);
+      })
       .catch((err: ApiError) => {
         if (err.status === 401) {
           setToken(null);
@@ -46,7 +53,7 @@ export default function App() {
         }
         setError("Could not load requests.");
       });
-  }, [viewer, status, flaggedOnly]);
+  }, [viewer, config, status, flaggedOnly, pages]);
 
   useEffect(refresh, [refresh]);
 
@@ -63,13 +70,14 @@ export default function App() {
     setViewer(null);
     setSelectedId(null);
     setRequests([]);
+    setTotal(0);
   }
 
   if (error) return <main className="shell error">{error}</main>;
   if (!config || restoring) return <main className="shell">Loading…</main>;
   if (!viewer) return <LoginForm onSignedIn={setViewer} />;
 
-  const pendingCount = requests.filter((request) => request.status === "pending").length;
+  const overdueCount = requests.filter((request) => request.aging === "overdue").length;
 
   return (
     <main className={selectedId === null ? "shell" : "shell drawer-open"}>
@@ -89,7 +97,10 @@ export default function App() {
             <button
               key={value || "all"}
               className={status === value ? "chip active" : "chip"}
-              onClick={() => setStatus(value)}
+              onClick={() => {
+                setStatus(value);
+                setPages(1);
+              }}
             >
               {value === "" ? "All" : value}
             </button>
@@ -98,14 +109,18 @@ export default function App() {
             <input
               type="checkbox"
               checked={flaggedOnly}
-              onChange={(event) => setFlaggedOnly(event.target.checked)}
+              onChange={(event) => {
+                setFlaggedOnly(event.target.checked);
+                setPages(1);
+              }}
             />
             Flagged only
           </label>
         </div>
         <div className="right-controls">
           <span className="muted small">
-            {requests.length} visible · {pendingCount} pending
+            Showing {requests.length} of {total}
+            {overdueCount > 0 && <span className="overdue-count"> · {overdueCount} overdue</span>}
           </span>
           <button className="approve" onClick={() => setComposing(true)}>
             New request
@@ -119,6 +134,12 @@ export default function App() {
         selectedId={selectedId}
         onSelect={setSelectedId}
       />
+
+      {requests.length < total && (
+        <div className="load-more">
+          <button onClick={() => setPages((n) => n + 1)}>Load more</button>
+        </div>
+      )}
 
       {selectedId !== null && (
         <RequestDetail

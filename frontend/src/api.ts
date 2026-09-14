@@ -2,8 +2,8 @@ import type {
   Config,
   LoginResult,
   NewRequest,
-  RefundRequest,
   RefundRequestDetail,
+  RequestPage,
   Status,
   User,
 } from "./types";
@@ -70,12 +70,16 @@ export const getConfig = () => request<Config>("/config");
 export function getRequests(filters: {
   status?: Status | "";
   flagged?: boolean;
-}): Promise<RefundRequest[]> {
+  limit?: number;
+  offset?: number;
+}): Promise<RequestPage> {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
   if (filters.flagged) params.set("flagged", "true");
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
   const query = params.toString();
-  return request<RefundRequest[]>(`/requests${query ? `?${query}` : ""}`);
+  return request<RequestPage>(`/requests${query ? `?${query}` : ""}`);
 }
 
 export const getRequest = (id: number) => request<RefundRequestDetail>(`/requests/${id}`);

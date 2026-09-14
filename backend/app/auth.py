@@ -49,6 +49,8 @@ def authenticate(session: DbSession, *, user_id: int, password: str) -> User | N
         return None
     if not verify_password(password, user.password_hash):
         return None
+    if not user.is_active:
+        return None
     return user
 
 
@@ -77,9 +79,20 @@ def user_for_token(session: DbSession, token: str) -> User | None:
         session.delete(record)
         session.commit()
         return None
+    if not record.user.is_active:
+        session.delete(record)
+        session.commit()
+        return None
     return record.user
 
 
 def revoke_token(session: DbSession, token: str) -> None:
     session.execute(delete(Session).where(Session.token == token))
     session.commit()
+
+
+def revoke_user_sessions(session: DbSession, user_id: int) -> None:
+    """Drop every live session for a user. Called whenever their role, manager
+    or active state changes: a token minted as a manager must not keep manager
+    powers for the rest of its twelve hours."""
+    session.execute(delete(Session).where(Session.user_id == user_id))

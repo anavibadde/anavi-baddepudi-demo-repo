@@ -259,6 +259,44 @@ table.queue {
   background: #fef3f2;
 }
 
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.aging-due {
+  color: var(--amber);
+  background: #fff6e5;
+  border-color: #f2d8a7;
+}
+
+.aging-overdue {
+  color: var(--red);
+  background: #fef3f2;
+  border-color: #f4c7c3;
+}
+
+.unassigned {
+  margin-top: 6px;
+  color: var(--red);
+  background: #fef3f2;
+  border-color: #f4c7c3;
+}
+
+.overdue-count {
+  color: var(--red);
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
 .flags {
   display: flex;
   flex-wrap: wrap;

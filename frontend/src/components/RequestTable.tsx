@@ -1,4 +1,4 @@
-import { humanize, money, when } from "../format";
+import { humanize, money, waited, when } from "../format";
 import type { Config, RefundRequest } from "../types";
 import { RiskFlags } from "./RiskFlags";
 
@@ -24,6 +24,7 @@ export function RequestTable({ requests, config, selectedId, onSelect }: Props) 
           <th>Risk</th>
           <th>Submitted by</th>
           <th>Submitted</th>
+          <th>Waiting</th>
         </tr>
       </thead>
       <tbody>
@@ -35,6 +36,11 @@ export function RequestTable({ requests, config, selectedId, onSelect }: Props) 
           >
             <td>
               <span className={`status status-${request.status}`}>{request.status}</span>
+              {request.unassigned && (
+                <div className="badge unassigned" title="No active manager above the submitter">
+                  Unassigned
+                </div>
+              )}
             </td>
             <td>
               <div>{request.customer_name}</div>
@@ -47,6 +53,16 @@ export function RequestTable({ requests, config, selectedId, onSelect }: Props) 
             </td>
             <td>{request.submitter.name}</td>
             <td className="muted small">{when(request.created_at)}</td>
+            <td className="small">
+              {request.status === "pending" && (
+                <span
+                  className={request.aging ? `badge aging-${request.aging}` : "muted"}
+                  title={request.aging ? config.aging_labels[request.aging] : undefined}
+                >
+                  {waited(request.age_hours)}
+                </span>
+              )}
+            </td>
           </tr>
         ))}
       </tbody>

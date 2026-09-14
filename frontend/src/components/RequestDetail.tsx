@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { ApiError, decideRequest, getRequest } from "../api";
-import { blockedReason, humanize, money, when } from "../format";
+import { blockedReason, humanize, money, waited, when } from "../format";
 import type { Config, RefundRequestDetail } from "../types";
 import { RiskFlags } from "./RiskFlags";
 
@@ -99,9 +99,24 @@ export function RequestDetail({ requestId, config, onDecided, onClose }: Props) 
           <dt>Submitted</dt>
           <dd>{when(request.created_at)}</dd>
         </div>
+        {pending && (
+          <div>
+            <dt>Waiting</dt>
+            <dd className={request.aging ? `badge aging-${request.aging}` : undefined}>
+              {waited(request.age_hours)}
+              {request.aging ? ` · ${config.aging_labels[request.aging]}` : ""}
+            </dd>
+          </div>
+        )}
       </dl>
 
       <p className="note">{request.note}</p>
+
+      {request.unassigned && pending && (
+        <p className="callout">
+          Nobody active above {request.submitter.name} can review this — an admin has to pick it up.
+        </p>
+      )}
 
       {request.requires_admin && pending && (
         <p className="callout">
