@@ -63,7 +63,20 @@ export async function logout(): Promise<void> {
   setToken(null);
 }
 
+export async function switchUser(userId: number): Promise<LoginResult> {
+  // Demo only. The server mints a real session for the target, so the app is
+  // genuinely that person afterwards rather than pretending locally.
+  const result = await request<LoginResult>("/auth/switch", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+  setToken(result.token);
+  return result;
+}
+
 export const getMe = () => request<User>("/auth/me");
+
+export const getUsers = () => request<User[]>("/users");
 
 export const getConfig = () => request<Config>("/config");
 

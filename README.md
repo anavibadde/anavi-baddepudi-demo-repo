@@ -38,6 +38,15 @@ script prints every id with its name and role; a quick tour is id **1** (admin,
 sees everything), **3** (manager, sees her three reports), **9** (analyst, sees
 only her own).
 
+Once you are in, the **Viewing as** dropdown in the top bar swaps you to any
+other seeded person, so one browser can walk the analyst, manager and admin
+views. It is not a client-side toggle: the server issues a real session for
+whoever you pick and revokes the one you were holding, so every visibility and
+decision check runs against the new identity. It is also a backdoor — an
+authenticated user becoming anyone else without their password — so it is gated
+behind `DEMO_SWITCH`, which defaults on here. Run the API with `DEMO_SWITCH=0`
+and the endpoint 404s and the dropdown disappears.
+
 What the login is and is not: passwords are salted and stretched with pbkdf2,
 and a successful login mints a random token stored server-side, so signing out
 revokes it. There is no SSO, no password reset, no rate limiting, and the token

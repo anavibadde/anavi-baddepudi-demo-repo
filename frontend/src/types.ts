@@ -67,6 +67,7 @@ export interface Config {
   due_hours: number;
   overdue_hours: number;
   page_size: number;
+  demo_switch: boolean;
   demo_notice: string;
 }
 

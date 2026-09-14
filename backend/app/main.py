@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -30,12 +31,18 @@ from .schemas import (
     RequestCreate,
     RequestDetailOut,
     RequestPage,
+    SwitchIn,
     UserOut,
     UserUpdate,
 )
 
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 200
+
+# Impersonation without a password is a backdoor, so it is a deployment choice
+# rather than a code path that always exists. On here so the demo can be walked
+# through from one screen; set DEMO_SWITCH=0 and the endpoint 404s.
+DEMO_SWITCH = os.getenv("DEMO_SWITCH", "1").lower() not in {"0", "false", "no"}
 
 
 @asynccontextmanager
@@ -154,6 +161,32 @@ def logout(token: str = Depends(bearer_token), session: Session = Depends(get_se
     return Response(status_code=204)
 
 
+@app.post("/api/auth/switch", response_model=LoginOut)
+def switch_user(
+    payload: SwitchIn,
+    token: str = Depends(bearer_token),
+    _: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Demo only: become another seeded user without their password.
+
+    The new identity is a real session, so every visibility and decision check
+    downstream runs against the person you switched to — this hands out a
+    different token, it does not let the browser claim a role.
+    """
+    if not DEMO_SWITCH:
+        raise HTTPException(status_code=404, detail="not_found")
+    target = session.get(User, payload.user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if not target.is_active:
+        raise HTTPException(status_code=400, detail="account_deactivated")
+    # Drop the old session rather than leaving a trail of live tokens behind.
+    revoke_token(session, token)
+    record = issue_token(session, target)
+    return {"token": record.token, "expires_at": record.expires_at, "user": target}
+
+
 @app.get("/api/auth/me", response_model=UserOut)
 def me(viewer: User = Depends(current_user)) -> User:
     return viewer
@@ -169,6 +202,7 @@ def get_config() -> dict:
         "due_hours": DUE_HOURS,
         "overdue_hours": OVERDUE_HOURS,
         "page_size": DEFAULT_PAGE_SIZE,
+        "demo_switch": DEMO_SWITCH,
         "demo_notice": "Demo only — no refunds are executed and no money moves.",
     }
 
