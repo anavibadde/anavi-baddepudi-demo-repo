@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
+from .auth import hash_password
 from .db import SessionLocal, create_all, engine
 from .models import (
     Action,
@@ -20,6 +21,10 @@ from .models import (
     utcnow,
 )
 from .risk import compute_flags
+
+# Everyone shares one password: a fake org of thirteen is not worth thirteen
+# secrets, and the README has to print it anyway.
+DEMO_PASSWORD = "refunds123"
 
 ORG = [
     ("Priya Raman", "priya@example.com", Role.admin, None),
@@ -80,8 +85,10 @@ def reset() -> None:
 def seed(session: Session, *, count: int = 54, rng: random.Random | None = None) -> None:
     rng = rng or random.Random(11)
     by_email: dict[str, User] = {}
+    # Hash once: pbkdf2 thirteen times over is a slow seed for no benefit.
+    password_hash = hash_password(DEMO_PASSWORD)
     for name, email, role, _ in ORG:
-        user = User(name=name, email=email, role=role)
+        user = User(name=name, email=email, role=role, password_hash=password_hash)
         session.add(user)
         by_email[email] = user
     session.flush()
@@ -162,6 +169,9 @@ def main() -> None:
     with SessionLocal() as session:
         seed(session)
         print("Seeded demo database.")
+        print(f"Sign in with any user id below and the password {DEMO_PASSWORD!r}:")
+        for user in session.query(User).order_by(User.id):
+            print(f"  {user.id:>2}  {user.name} ({user.role.value})")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from conftest import auth
 
 BASE = {
     "customer_id": "CUS-1",
@@ -14,7 +15,7 @@ BASE = {
 
 def submit(client, user, **overrides):
     payload = {**BASE, **overrides}
-    response = client.post("/api/requests", json=payload, headers={"X-User-Id": str(user.id)})
+    response = client.post("/api/requests", json=payload, headers=auth(user))
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -23,12 +24,12 @@ def decide(client, user, request_id, action, **payload):
     return client.post(
         f"/api/requests/{request_id}/decision",
         json={"action": action, **payload},
-        headers={"X-User-Id": str(user.id)},
+        headers=auth(user),
     )
 
 
 def listed_ids(client, user, **params):
-    response = client.get("/api/requests", params=params, headers={"X-User-Id": str(user.id)})
+    response = client.get("/api/requests", params=params, headers=auth(user))
     assert response.status_code == 200, response.text
     return [r["id"] for r in response.json()]
 
@@ -52,9 +53,7 @@ def test_manager_sees_direct_reports_and_admin_sees_all(client, org):
 
 def test_out_of_line_request_is_404_not_403(client, org):
     other = submit(client, org["analyst_b"])
-    response = client.get(
-        f"/api/requests/{other['id']}", headers={"X-User-Id": str(org["manager_a"].id)}
-    )
+    response = client.get(f"/api/requests/{other['id']}", headers=auth(org["manager_a"]))
     assert response.status_code == 404
 
 
@@ -100,9 +99,7 @@ def test_history_records_submission_and_decision(client, org):
     request = submit(client, org["analyst_a"])
     decide(client, org["manager_a"], request["id"], "approved", comment="Verified.")
 
-    detail = client.get(
-        f"/api/requests/{request['id']}", headers={"X-User-Id": str(org["analyst_a"].id)}
-    ).json()
+    detail = client.get(f"/api/requests/{request['id']}", headers=auth(org["analyst_a"])).json()
     assert [e["action"] for e in detail["events"]] == ["submitted", "approved"]
     assert detail["events"][1]["actor"]["email"] == org["manager_a"].email
 
@@ -171,6 +168,9 @@ def test_status_filter(client, org, status):
     assert listed_ids(client, org["analyst_a"], status=status) == [expected]
 
 
-def test_unknown_user_is_rejected(client, org):
-    response = client.get("/api/requests", headers={"X-User-Id": "9999"})
-    assert response.status_code == 401
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer not-a-real-token"}, {"Authorization": "Basic whatever"}],
+)
+def test_requests_require_a_valid_session(client, org, headers):
+    assert client.get("/api/requests", headers=headers).status_code == 401

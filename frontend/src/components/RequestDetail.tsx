@@ -2,18 +2,17 @@ import { useEffect, useState } from "react";
 
 import { ApiError, decideRequest, getRequest } from "../api";
 import { blockedReason, humanize, money, when } from "../format";
-import type { Config, RefundRequestDetail, User } from "../types";
+import type { Config, RefundRequestDetail } from "../types";
 import { RiskFlags } from "./RiskFlags";
 
 interface Props {
   requestId: number;
-  viewer: User;
   config: Config;
   onDecided: () => void;
   onClose: () => void;
 }
 
-export function RequestDetail({ requestId, viewer, config, onDecided, onClose }: Props) {
+export function RequestDetail({ requestId, config, onDecided, onClose }: Props) {
   const [request, setRequest] = useState<RefundRequestDetail | null>(null);
   const [comment, setComment] = useState("");
   const [confirmRisk, setConfirmRisk] = useState(false);
@@ -22,13 +21,13 @@ export function RequestDetail({ requestId, viewer, config, onDecided, onClose }:
 
   useEffect(() => {
     let active = true;
-    getRequest(viewer.id, requestId)
+    getRequest(requestId)
       .then((loaded) => active && setRequest(loaded))
       .catch((err: ApiError) => active && setError(err.detail));
     return () => {
       active = false;
     };
-  }, [requestId, viewer.id]);
+  }, [requestId]);
 
   if (error && !request) return <aside className="detail error">{error}</aside>;
   if (!request) return <aside className="detail">Loading…</aside>;
@@ -41,7 +40,7 @@ export function RequestDetail({ requestId, viewer, config, onDecided, onClose }:
     setBusy(true);
     setError(null);
     try {
-      const updated = await decideRequest(viewer.id, requestId, {
+      const updated = await decideRequest(requestId, {
         action,
         comment,
         confirm_risk: confirmRisk,
@@ -56,7 +55,7 @@ export function RequestDetail({ requestId, viewer, config, onDecided, onClose }:
           : blockedReason(apiError.detail) ?? apiError.detail,
       );
       if (apiError.status === 409) {
-        getRequest(viewer.id, requestId).then(setRequest).catch(() => undefined);
+        getRequest(requestId).then(setRequest).catch(() => undefined);
         onDecided();
       }
     } finally {

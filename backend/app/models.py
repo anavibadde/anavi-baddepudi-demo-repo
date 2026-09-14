@@ -51,8 +51,20 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(200), unique=True)
     role: Mapped[Role] = mapped_column(Enum(Role))
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    password_hash: Mapped[str] = mapped_column(String(200), default="")
 
     manager: Mapped[User | None] = relationship(remote_side=[id], backref="reports")
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship()
 
 
 class RefundRequest(Base):

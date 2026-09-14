@@ -2,10 +2,9 @@ import { useMemo, useState } from "react";
 
 import { ApiError, createRequest } from "../api";
 import { humanize } from "../format";
-import type { Config, User } from "../types";
+import type { Config } from "../types";
 
 interface Props {
-  viewer: User;
   config: Config;
   onCreated: (id: number) => void;
   onClose: () => void;
@@ -19,7 +18,7 @@ const EMPTY = {
   note: "",
 };
 
-export function NewRequestForm({ viewer, config, onCreated, onClose }: Props) {
+export function NewRequestForm({ config, onCreated, onClose }: Props) {
   const [form, setForm] = useState(EMPTY);
   const [reason, setReason] = useState(config.reasons[0]);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +40,7 @@ export function NewRequestForm({ viewer, config, onCreated, onClose }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const created = await createRequest(viewer.id, {
+      const created = await createRequest({
         customer_id: form.customer_id.trim(),
         customer_name: form.customer_name.trim(),
         order_id: form.order_id.trim(),

@@ -25,9 +25,19 @@ npm install
 npm run dev
 ```
 
-Pick who you are with the "Viewing as" selector in the header. There is no login:
-the browser asserts a user id and the API trusts it, which is the first thing that
-would have to go in a real deployment.
+## Signing in
+
+Sign in with a **user id** and the shared demo password `refunds123`. The seed
+script prints every id with its name and role; a quick tour is id **1** (admin,
+sees everything), **3** (manager, sees her three reports), **9** (analyst, sees
+only her own).
+
+What the login is and is not: passwords are salted and stretched with pbkdf2,
+and a successful login mints a random token stored server-side, so signing out
+revokes it. There is no SSO, no password reset, no rate limiting, and the token
+lives in `localStorage` behind a bearer header rather than a `Secure; HttpOnly`
+cookie. One password for thirteen fake people is a demo convenience, not a
+pattern to copy.
 
 ## Architecture
 
@@ -64,9 +74,11 @@ flowchart LR
   API -- "appends" --> DE
 ```
 
-Every call carries an `X-User-Id` header that the API trusts — the stand-in for
-auth. `users.manager_id` is a self-referencing foreign key, so the org chart is
-read live: reorg someone and their in-flight requests move to the new manager.
+Every call carries an `Authorization: Bearer <token>` header; the API looks the
+token up in the `sessions` table and derives the user from it, so the browser
+cannot claim to be someone else. `users.manager_id` is a self-referencing foreign
+key, so the org chart is read live: reorg someone and their in-flight requests
+move to the new manager.
 
 ### Request lifecycle
 
@@ -155,6 +167,7 @@ to triage the risky queue first.
 ## Layout
 
 ```
+backend/app/auth.py     password hashing and session tokens
 backend/app/models.py   tables
 backend/app/risk.py     flag heuristics and the escalation rule
 backend/app/rules.py    visibility and decision authorization

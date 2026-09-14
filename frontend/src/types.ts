@@ -10,6 +10,12 @@ export interface User {
   manager_id: number | null;
 }
 
+export interface LoginResult {
+  token: string;
+  expires_at: string;
+  user: User;
+}
+
 export interface DecisionEvent {
   id: number;
   action: Action;
