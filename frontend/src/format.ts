@@ -11,6 +11,12 @@ export function when(iso: string): string {
   });
 }
 
+export function waited(hours: number): string {
+  if (hours < 1) return "just now";
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 export function humanize(value: string): string {
   return value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -20,6 +26,7 @@ const BLOCKED_REASONS: Record<string, string> = {
   analysts_cannot_decide: "Analysts cannot decide requests",
   already_decided: "Already decided",
   admin_approval_required: "Needs an admin: high value plus another risk flag",
+  account_deactivated: "Your account is deactivated",
   not_found: "Not visible to you",
 };
 

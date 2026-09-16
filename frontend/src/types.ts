@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: Role;
   manager_id: number | null;
+  is_active: boolean;
 }
 
 export interface LoginResult {
@@ -42,6 +43,16 @@ export interface RefundRequest {
   decider: User | null;
   can_decide: boolean;
   decide_blocked_reason: string | null;
+  age_hours: number;
+  aging: "due" | "overdue" | null;
+  unassigned: boolean;
+}
+
+export interface RequestPage {
+  items: RefundRequest[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface RefundRequestDetail extends RefundRequest {
@@ -52,6 +63,10 @@ export interface Config {
   high_value_cents: number;
   reasons: string[];
   flag_labels: Record<string, string>;
+  aging_labels: Record<string, string>;
+  due_hours: number;
+  overdue_hours: number;
+  page_size: number;
   demo_notice: string;
 }
 

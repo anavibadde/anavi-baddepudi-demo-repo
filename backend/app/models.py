@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -52,6 +52,7 @@ class User(Base):
     role: Mapped[Role] = mapped_column(Enum(Role))
     manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(200), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     manager: Mapped[User | None] = relationship(remote_side=[id], backref="reports")
 

@@ -15,6 +15,13 @@ class UserOut(BaseModel):
     email: str
     role: Role
     manager_id: int | None
+    is_active: bool
+
+
+class UserUpdate(BaseModel):
+    role: Role | None = None
+    manager_id: int | None = None
+    is_active: bool | None = None
 
 
 class LoginIn(BaseModel):
@@ -54,6 +61,16 @@ class RequestOut(BaseModel):
     decider: UserOut | None
     can_decide: bool
     decide_blocked_reason: str | None
+    age_hours: float
+    aging: str | None
+    unassigned: bool
+
+
+class RequestPage(BaseModel):
+    items: list[RequestOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class RequestDetailOut(RequestOut):

@@ -139,6 +139,33 @@ Two consequences worth knowing:
   goes up to *their* manager. Fern Doyle reports to no one, so her requests are
   decidable only by an admin — the deliberate edge case in the seed data.
 
+### When a reviewer leaves
+
+People get deactivated mid-queue, and their reports' pending requests must not
+quietly become invisible. Two things happen instead:
+
+- **The queue moves one hop up.** Deactivate a manager and their reports' requests
+  appear for *that manager's* manager, who can decide them. One hop only — the
+  same reason skip-levels are excluded normally.
+- **A request with nobody active above it is labelled `Unassigned`** in the queue
+  and in the drawer, so an admin can see it needs picking up rather than
+  discovering it months later.
+
+Deactivating someone, changing their role, or moving them under a new manager all
+go through `PATCH /api/users/{id}` (admins only), and **every one of those changes
+revokes that person's live sessions**. Otherwise a demoted manager keeps manager
+powers until their twelve-hour token expires. A deactivated account can neither
+sign in nor use an existing token.
+
+### Aging
+
+Pending requests carry how long they have waited. Past **3 days** they are marked
+due, past **7 days** overdue, and the counter above the queue shows how many are
+overdue. Within the pending block the queue is ordered oldest-first, so an SLA
+breach rises rather than sinking under newer submissions, and the list is paged
+(25 at a time, **Load more** for the rest) instead of returning everything.
+Decided requests stop aging: how long it sat is history, not work.
+
 ## Flags and alerts
 
 Flags are heuristics computed **once, at submit time**, and stored on the request.
@@ -169,6 +196,7 @@ to triage the risky queue first.
 ```
 backend/app/auth.py     password hashing and session tokens
 backend/app/models.py   tables
+backend/app/aging.py    pending-age SLA tiers
 backend/app/risk.py     flag heuristics and the escalation rule
 backend/app/rules.py    visibility and decision authorization
 backend/app/main.py     HTTP layer

@@ -7,14 +7,21 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from sqlalchemy import select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
-from .auth import authenticate, issue_token, revoke_token, user_for_token
+from .aging import AGING_LABELS, DUE_HOURS, OVERDUE_HOURS, age_hours, aging_tier
+from .auth import (
+    authenticate,
+    issue_token,
+    revoke_token,
+    revoke_user_sessions,
+    user_for_token,
+)
 from .db import create_all, get_session
-from .models import Action, DecisionEvent, Reason, RefundRequest, Status, User, utcnow
+from .models import Action, DecisionEvent, Reason, RefundRequest, Role, Status, User, utcnow
 from .risk import FLAG_LABELS, HIGH_VALUE_CENTS, compute_flags, requires_admin
-from .rules import DecisionDenied, can_view, check_can_decide, visible_requests
+from .rules import DecisionDenied, can_view, check_can_decide, reviewer_for, visible_requests
 from .schemas import (
     DecisionIn,
     EventOut,
@@ -22,9 +29,13 @@ from .schemas import (
     LoginOut,
     RequestCreate,
     RequestDetailOut,
-    RequestOut,
+    RequestPage,
     UserOut,
+    UserUpdate,
 )
+
+DEFAULT_PAGE_SIZE = 25
+MAX_PAGE_SIZE = 200
 
 
 @asynccontextmanager
@@ -75,6 +86,10 @@ def _decision_availability(viewer: User, request: RefundRequest) -> tuple[bool, 
 def _serialize(viewer: User, request: RefundRequest) -> dict:
     can_decide, blocked_reason = _decision_availability(viewer, request)
     flags = list(request.risk_flags or [])
+    pending = request.status is Status.pending
+    # No active reviewer in the submitter's line means this only moves if an
+    # admin picks it up — worth saying out loud rather than leaving it to rot.
+    unassigned = pending and reviewer_for(request.submitter) is None
     return {
         "id": request.id,
         "customer_id": request.customer_id,
@@ -93,6 +108,9 @@ def _serialize(viewer: User, request: RefundRequest) -> dict:
         "decider": UserOut.model_validate(request.decider) if request.decider else None,
         "can_decide": can_decide,
         "decide_blocked_reason": blocked_reason,
+        "age_hours": round(age_hours(request.created_at), 1),
+        "aging": aging_tier(request.created_at, pending=pending),
+        "unassigned": unassigned,
     }
 
 
@@ -147,6 +165,10 @@ def get_config() -> dict:
         "high_value_cents": HIGH_VALUE_CENTS,
         "reasons": [r.value for r in Reason],
         "flag_labels": FLAG_LABELS,
+        "aging_labels": AGING_LABELS,
+        "due_hours": DUE_HOURS,
+        "overdue_hours": OVERDUE_HOURS,
+        "page_size": DEFAULT_PAGE_SIZE,
         "demo_notice": "Demo only — no refunds are executed and no money moves.",
     }
 
@@ -159,31 +181,82 @@ def list_users(
     return list(session.scalars(select(User).order_by(User.role, User.name)))
 
 
-@app.get("/api/requests", response_model=list[RequestOut])
+@app.patch("/api/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
+    viewer: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> User:
+    """Change someone's role, manager or active state. Any of those changes what
+    they are allowed to see, so their live sessions go with it."""
+    if viewer.role is not Role.admin:
+        raise HTTPException(status_code=403, detail="admin_only")
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if payload.manager_id == user.id:
+        raise HTTPException(status_code=400, detail="cannot_report_to_self")
+    if payload.manager_id is not None and session.get(User, payload.manager_id) is None:
+        raise HTTPException(status_code=404, detail="manager_not_found")
+
+    # model_fields_set, not None-checks: clearing a manager is a real change.
+    changed = payload.model_fields_set
+    if payload.role is not None:
+        user.role = payload.role
+    if "manager_id" in changed:
+        user.manager_id = payload.manager_id
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if changed:
+        revoke_user_sessions(session, user.id)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+@app.get("/api/requests", response_model=RequestPage)
 def list_requests(
     status: Status | None = Query(default=None),
     flagged: bool | None = Query(default=None),
+    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    offset: int = Query(default=0, ge=0),
     viewer: User = Depends(current_user),
     session: Session = Depends(get_session),
-) -> list[dict]:
-    stmt = visible_requests(viewer).options(
-        selectinload(RefundRequest.submitter), selectinload(RefundRequest.decider)
-    )
+) -> dict:
+    stmt = visible_requests(viewer)
     if status is not None:
         stmt = stmt.where(RefundRequest.status == status)
-    stmt = stmt.order_by(RefundRequest.created_at.desc())
-    rows = [_serialize(viewer, r) for r in session.scalars(stmt)]
     if flagged is not None:
-        rows = [r for r in rows if bool(r["risk_flags"]) is flagged]
-    # Pending first, then riskiest, then newest: the queue is a work list.
-    rows.sort(
-        key=lambda r: (
-            r["status"] is not Status.pending,
-            -len(r["risk_flags"]),
-            -r["amount_cents"],
+        has_flags = func.json_array_length(RefundRequest.risk_flags) > 0
+        stmt = stmt.where(has_flags if flagged else ~has_flags)
+
+    total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    # Pending first, then riskiest, then oldest: the queue is a work list, and
+    # ordering by age means anything breaching its SLA rises instead of being
+    # buried under newer submissions. Paging happens after this, in SQL, so
+    # page two is the rest of the same list rather than a different sort.
+    page = (
+        stmt.options(
+            selectinload(RefundRequest.submitter),
+            selectinload(RefundRequest.decider),
+            selectinload(RefundRequest.submitter, User.manager),
         )
+        .order_by(
+            case((RefundRequest.status == Status.pending, 0), else_=1),
+            func.json_array_length(RefundRequest.risk_flags).desc(),
+            RefundRequest.created_at.asc(),
+        )
+        .limit(limit)
+        .offset(offset)
     )
-    return rows
+    return {
+        "items": [_serialize(viewer, r) for r in session.scalars(page)],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @app.post("/api/requests", response_model=RequestDetailOut, status_code=201)
