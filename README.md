@@ -1,7 +1,12 @@
 # Internal tools (demo)
 
-One shell, one login, one users table, with each tool behind its own grant. The
-first tool is **refund review** at `/refunds`: an analyst submits a request, a
+This repo has 3 end-to-end flows — refund review, KYC and feature flags. My demo only covers the refund review for the sake of time. 
+
+Demo: 
+
+https://www.loom.com/share/e46bf6d25fbc4fe48ac9f3ff3c047f03
+
+The first tool is **refund review** at `/refunds`: an analyst submits a request, a
 reviewer approves or rejects it, and both see the decision history.
 
 **Nothing is executed.** Approving a request records a decision; no payment provider
@@ -14,6 +19,8 @@ is called and no money moves.
 > ports to another review queue and what does not.
 
 ## Try the demo
+
+Download this repo as a code file and then navigate to that file within Terminal. 
 
 Two terminals, then open <http://localhost:5173>.
 
