@@ -8,18 +8,30 @@ from __future__ import annotations
 
 from sqlalchemy import Select, or_, select
 
-from .models import Action, RefundRequest, Role, Status, User
+from ..models import Role, User
+from .models import Action, RefundRequest, Status
 from .risk import requires_admin, requires_confirmation
 
 
 def visible_requests(viewer: User) -> Select[tuple[RefundRequest]]:
-    """Requests the viewer may list: their own, plus their direct reports'."""
+    """Requests the viewer may list: their own, their direct reports', and the
+    reports of any direct report who has been deactivated."""
     stmt = select(RefundRequest)
     if viewer.role is Role.admin:
         return stmt
     reports = select(User.id).where(User.manager_id == viewer.id).scalar_subquery()
+    inactive_reports = (
+        select(User.id)
+        .where(User.manager_id == viewer.id, User.is_active.is_(False))
+        .scalar_subquery()
+    )
+    inherited = select(User.id).where(User.manager_id.in_(inactive_reports)).scalar_subquery()
     return stmt.where(
-        or_(RefundRequest.created_by == viewer.id, RefundRequest.created_by.in_(reports))
+        or_(
+            RefundRequest.created_by == viewer.id,
+            RefundRequest.created_by.in_(reports),
+            RefundRequest.created_by.in_(inherited),
+        )
     )
 
 
@@ -28,7 +40,26 @@ def can_view(viewer: User, request: RefundRequest, submitter: User) -> bool:
         return True
     if request.created_by == viewer.id:
         return True
-    return submitter.manager_id == viewer.id
+    if submitter.manager_id == viewer.id:
+        return True
+    # One hop up: a deactivated manager's queue falls to their own manager
+    # rather than becoming invisible to everyone but an admin.
+    manager = submitter.manager
+    return manager is not None and not manager.is_active and manager.manager_id == viewer.id
+
+
+def reviewer_for(submitter: User) -> User | None:
+    """The nearest active person above the submitter who could decide their
+    request, or None when the request can only be handled by an admin."""
+    seen: set[int] = {submitter.id}
+    manager = submitter.manager
+    # A bad reorg can point two people at each other; walk defensively.
+    while manager is not None and manager.id not in seen:
+        if manager.is_active and manager.role is not Role.analyst:
+            return manager
+        seen.add(manager.id)
+        manager = manager.manager
+    return None
 
 
 class DecisionDenied(Exception):
@@ -50,6 +81,8 @@ def check_can_decide(
 ) -> None:
     if not can_view(actor, request, submitter):
         raise DecisionDenied("not_found", 404)
+    if not actor.is_active:
+        raise DecisionDenied("account_deactivated", 403)
     if actor.role is Role.analyst:
         raise DecisionDenied("analysts_cannot_decide", 403)
     if actor.id == request.created_by:

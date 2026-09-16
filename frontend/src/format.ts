@@ -1,5 +1,7 @@
 export function money(cents: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
+    cents / 100,
+  );
 }
 
 export function when(iso: string): string {
@@ -11,6 +13,12 @@ export function when(iso: string): string {
   });
 }
 
+export function waited(hours: number): string {
+  if (hours < 1) return "just now";
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
 export function humanize(value: string): string {
   return value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
@@ -20,7 +28,24 @@ const BLOCKED_REASONS: Record<string, string> = {
   analysts_cannot_decide: "Analysts cannot decide requests",
   already_decided: "Already decided",
   admin_approval_required: "Needs an admin: high value plus another risk flag",
+  account_deactivated: "Your account is deactivated",
   not_found: "Not visible to you",
+  cannot_approve_own_request: "You proposed this change",
+  stale_request: "Production moved since this was proposed",
+  request_already_open: "A change is already open for this flag",
+  prod_requires_request: "Production needs a change request",
+  no_change: "That is already the current value",
+  not_your_request: "Only the person who proposed it can withdraw it",
+  cannot_sign_off_own_recommendation: "You recommended this case",
+  claimed_by_someone_else: "Someone else is working this case",
+  already_yours: "You already hold this case",
+  not_your_claim: "Someone else holds the claim",
+  claim_required: "Claim the case before recommending",
+  awaiting_sign_off: "Waiting on a second reviewer",
+  awaiting_info: "Waiting on documents from the applicant",
+  no_recommendation: "Nothing has been recommended yet",
+  not_claimed: "Nobody holds this case",
+  not_awaiting_info: "This case is not waiting on documents",
 };
 
 export function blockedReason(reason: string | null): string | null {

@@ -1,30 +1,36 @@
+"""The platform shell: one login, one users table, several tools behind it."""
+
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from .auth import authenticate, issue_token, revoke_token, user_for_token
-from .db import create_all, get_session
-from .models import Action, DecisionEvent, Reason, RefundRequest, Status, User, utcnow
-from .risk import FLAG_LABELS, HIGH_VALUE_CENTS, compute_flags, requires_admin
-from .rules import DecisionDenied, can_view, check_can_decide, visible_requests
-from .schemas import (
-    DecisionIn,
-    EventOut,
-    LoginIn,
-    LoginOut,
-    RequestCreate,
-    RequestDetailOut,
-    RequestOut,
-    UserOut,
+from .auth import (
+    authenticate,
+    issue_token,
+    revoke_token,
+    revoke_user_sessions,
 )
+from .db import create_all, get_session
+from .deps import bearer_token, current_user
+from .entitlements import apps_for
+from .flags.routes import router as flags_router
+from .kyc.routes import router as kyc_router
+from .models import Role, User
+from .refunds.routes import router as refunds_router
+from .schemas import AppOut, LoginIn, LoginOut, SwitchIn, UserOut, UserUpdate
+
+# Impersonation without a password is a backdoor, so it is a deployment choice
+# rather than a code path that always exists. On here so the demo can be walked
+# through from one screen; set DEMO_SWITCH=0 and the endpoint 404s.
+DEMO_SWITCH = os.getenv("DEMO_SWITCH", "1").lower() not in {"0", "false", "no"}
 
 
 @asynccontextmanager
@@ -33,7 +39,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Refund Review (demo)", lifespan=lifespan)
+app = FastAPI(title="Internal tools (demo)", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,81 +48,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-def bearer_token(authorization: str = Header(default="")) -> str:
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise HTTPException(status_code=401, detail="not_authenticated")
-    return token
-
-
-def current_user(
-    token: str = Depends(bearer_token),
-    session: Session = Depends(get_session),
-) -> User:
-    user = user_for_token(session, token)
-    if user is None:
-        raise HTTPException(status_code=401, detail="invalid_session")
-    return user
-
-
-def _decision_availability(viewer: User, request: RefundRequest) -> tuple[bool, str | None]:
-    """Whether the viewer could decide this request, ignoring the risk tick-box
-    (the UI collects that separately)."""
-    try:
-        check_can_decide(
-            viewer, request, request.submitter, action=Action.approved, confirmed_risk=True
-        )
-    except DecisionDenied as denied:
-        return False, denied.reason
-    return True, None
-
-
-def _serialize(viewer: User, request: RefundRequest) -> dict:
-    can_decide, blocked_reason = _decision_availability(viewer, request)
-    flags = list(request.risk_flags or [])
-    return {
-        "id": request.id,
-        "customer_id": request.customer_id,
-        "customer_name": request.customer_name,
-        "order_id": request.order_id,
-        "reason": request.reason,
-        "amount_cents": request.amount_cents,
-        "currency": request.currency,
-        "note": request.note,
-        "status": request.status,
-        "risk_flags": flags,
-        "requires_admin": requires_admin(flags),
-        "created_at": request.created_at,
-        "decided_at": request.decided_at,
-        "submitter": UserOut.model_validate(request.submitter),
-        "decider": UserOut.model_validate(request.decider) if request.decider else None,
-        "can_decide": can_decide,
-        "decide_blocked_reason": blocked_reason,
-    }
-
-
-def _serialize_detail(viewer: User, request: RefundRequest) -> dict:
-    data = _serialize(viewer, request)
-    data["events"] = [
-        EventOut(
-            id=e.id,
-            action=e.action,
-            comment=e.comment,
-            created_at=e.created_at,
-            actor=UserOut.model_validate(e.actor),
-        )
-        for e in request.events
-    ]
-    return data
-
-
-def _load_visible(request_id: int, viewer: User, session: Session) -> RefundRequest:
-    request = session.get(RefundRequest, request_id)
-    if request is None or not can_view(viewer, request, request.submitter):
-        # 404 rather than 403 so request IDs outside the viewer's line cannot be probed.
-        raise HTTPException(status_code=404, detail="not_found")
-    return request
+app.include_router(refunds_router)
+app.include_router(flags_router)
+app.include_router(kyc_router)
 
 
 @app.post("/api/auth/login", response_model=LoginOut)
@@ -136,18 +70,64 @@ def logout(token: str = Depends(bearer_token), session: Session = Depends(get_se
     return Response(status_code=204)
 
 
+@app.post("/api/auth/switch", response_model=LoginOut)
+def switch_user(
+    payload: SwitchIn,
+    token: str = Depends(bearer_token),
+    _: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Demo only: become another seeded user without their password.
+
+    The new identity is a real session, so every visibility and decision check
+    downstream runs against the person you switched to — this hands out a
+    different token, it does not let the browser claim a role.
+    """
+    if not DEMO_SWITCH:
+        raise HTTPException(status_code=404, detail="not_found")
+    target = session.get(User, payload.user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if not target.is_active:
+        raise HTTPException(status_code=400, detail="account_deactivated")
+    # Drop the old session rather than leaving a trail of live tokens behind.
+    revoke_token(session, token)
+    record = issue_token(session, target)
+    return {"token": record.token, "expires_at": record.expires_at, "user": target}
+
+
 @app.get("/api/auth/me", response_model=UserOut)
 def me(viewer: User = Depends(current_user)) -> User:
     return viewer
 
 
+@app.get("/api/me/apps", response_model=list[AppOut])
+def my_apps(
+    viewer: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """The tools this person holds. The home page renders these and nothing
+    else, but the grant is re-checked on every call into a tool."""
+    return [
+        {
+            "slug": info.slug,
+            "name": info.name,
+            "description": info.description,
+            "path": info.path,
+            "app_role": app_role,
+        }
+        for info, app_role in apps_for(session, viewer)
+    ]
+
+
 @app.get("/api/config")
 def get_config() -> dict:
     return {
-        "high_value_cents": HIGH_VALUE_CENTS,
-        "reasons": [r.value for r in Reason],
-        "flag_labels": FLAG_LABELS,
-        "demo_notice": "Demo only — no refunds are executed and no money moves.",
+        "demo_switch": DEMO_SWITCH,
+        "demo_notice": (
+            "Demo only — sign-in is a seeded password and the identity switcher "
+            "is a backdoor. No refunds are executed and no money moves."
+        ),
     }
 
 
@@ -159,139 +139,35 @@ def list_users(
     return list(session.scalars(select(User).order_by(User.role, User.name)))
 
 
-@app.get("/api/requests", response_model=list[RequestOut])
-def list_requests(
-    status: Status | None = Query(default=None),
-    flagged: bool | None = Query(default=None),
+@app.patch("/api/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    payload: UserUpdate,
     viewer: User = Depends(current_user),
     session: Session = Depends(get_session),
-) -> list[dict]:
-    stmt = visible_requests(viewer).options(
-        selectinload(RefundRequest.submitter), selectinload(RefundRequest.decider)
-    )
-    if status is not None:
-        stmt = stmt.where(RefundRequest.status == status)
-    stmt = stmt.order_by(RefundRequest.created_at.desc())
-    rows = [_serialize(viewer, r) for r in session.scalars(stmt)]
-    if flagged is not None:
-        rows = [r for r in rows if bool(r["risk_flags"]) is flagged]
-    # Pending first, then riskiest, then newest: the queue is a work list.
-    rows.sort(
-        key=lambda r: (
-            r["status"] is not Status.pending,
-            -len(r["risk_flags"]),
-            -r["amount_cents"],
-        )
-    )
-    return rows
+) -> User:
+    """Change someone's role, manager or active state. Any of those changes what
+    they are allowed to see, so their live sessions go with it."""
+    if viewer.role is not Role.admin:
+        raise HTTPException(status_code=403, detail="admin_only")
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if payload.manager_id == user.id:
+        raise HTTPException(status_code=400, detail="cannot_report_to_self")
+    if payload.manager_id is not None and session.get(User, payload.manager_id) is None:
+        raise HTTPException(status_code=404, detail="manager_not_found")
 
-
-@app.post("/api/requests", response_model=RequestDetailOut, status_code=201)
-def create_request(
-    payload: RequestCreate,
-    viewer: User = Depends(current_user),
-    session: Session = Depends(get_session),
-) -> dict:
-    if payload.idempotency_key:
-        existing = session.scalar(
-            select(RefundRequest).where(
-                RefundRequest.idempotency_key == payload.idempotency_key,
-                RefundRequest.created_by == viewer.id,
-            )
-        )
-        if existing is not None:
-            return _serialize_detail(viewer, existing)
-
-    created_at = utcnow()
-    flags = compute_flags(
-        session,
-        customer_id=payload.customer_id,
-        amount_cents=payload.amount_cents,
-        reason=payload.reason,
-        at=created_at,
-    )
-    request = RefundRequest(
-        customer_id=payload.customer_id,
-        customer_name=payload.customer_name,
-        order_id=payload.order_id,
-        reason=payload.reason,
-        amount_cents=payload.amount_cents,
-        note=payload.note,
-        risk_flags=flags,
-        created_by=viewer.id,
-        created_at=created_at,
-        idempotency_key=payload.idempotency_key,
-    )
-    session.add(request)
-    session.flush()
-    session.add(
-        DecisionEvent(
-            request_id=request.id,
-            actor_id=viewer.id,
-            action=Action.submitted,
-            comment=payload.note,
-            created_at=created_at,
-        )
-    )
+    # model_fields_set, not None-checks: clearing a manager is a real change.
+    changed = payload.model_fields_set
+    if payload.role is not None:
+        user.role = payload.role
+    if "manager_id" in changed:
+        user.manager_id = payload.manager_id
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if changed:
+        revoke_user_sessions(session, user.id)
     session.commit()
-    session.refresh(request)
-    return _serialize_detail(viewer, request)
-
-
-@app.get("/api/requests/{request_id}", response_model=RequestDetailOut)
-def get_request(
-    request_id: int,
-    viewer: User = Depends(current_user),
-    session: Session = Depends(get_session),
-) -> dict:
-    return _serialize_detail(viewer, _load_visible(request_id, viewer, session))
-
-
-@app.post("/api/requests/{request_id}/decision", response_model=RequestDetailOut)
-def decide(
-    request_id: int,
-    payload: DecisionIn,
-    viewer: User = Depends(current_user),
-    session: Session = Depends(get_session),
-) -> dict:
-    if payload.action is Action.submitted:
-        raise HTTPException(status_code=400, detail="invalid_action")
-    request = _load_visible(request_id, viewer, session)
-    if payload.action is Action.rejected and not payload.comment.strip():
-        raise HTTPException(status_code=400, detail="rejection_comment_required")
-
-    try:
-        check_can_decide(
-            viewer,
-            request,
-            request.submitter,
-            action=payload.action,
-            confirmed_risk=payload.confirm_risk,
-        )
-    except DecisionDenied as denied:
-        raise HTTPException(status_code=denied.status_code, detail=denied.reason) from denied
-
-    decided_at = datetime.now(timezone.utc)
-    status = Status.approved if payload.action is Action.approved else Status.rejected
-    # Conditional on still being pending: two reviewers clicking at once means the
-    # second one loses here rather than overwriting the first decision.
-    result = session.execute(
-        update(RefundRequest)
-        .where(RefundRequest.id == request.id, RefundRequest.status == Status.pending)
-        .values(status=status, decided_by=viewer.id, decided_at=decided_at)
-    )
-    if result.rowcount == 0:
-        session.rollback()
-        raise HTTPException(status_code=409, detail="already_decided")
-
-    session.add(
-        DecisionEvent(
-            request_id=request.id,
-            actor_id=viewer.id,
-            action=payload.action,
-            comment=payload.comment.strip(),
-        )
-    )
-    session.commit()
-    session.expire_all()
-    return _serialize_detail(viewer, session.get(RefundRequest, request_id))
+    session.refresh(user)
+    return user

@@ -1,12 +1,4 @@
-import type {
-  Config,
-  LoginResult,
-  NewRequest,
-  RefundRequest,
-  RefundRequestDetail,
-  Status,
-  User,
-} from "./types";
+import type { AppSummary, LoginResult, PlatformConfig, User } from "./types";
 
 const TOKEN_KEY = "refund-review-token";
 
@@ -31,7 +23,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -63,34 +55,22 @@ export async function logout(): Promise<void> {
   setToken(null);
 }
 
-export const getMe = () => request<User>("/auth/me");
-
-export const getConfig = () => request<Config>("/config");
-
-export function getRequests(filters: {
-  status?: Status | "";
-  flagged?: boolean;
-}): Promise<RefundRequest[]> {
-  const params = new URLSearchParams();
-  if (filters.status) params.set("status", filters.status);
-  if (filters.flagged) params.set("flagged", "true");
-  const query = params.toString();
-  return request<RefundRequest[]>(`/requests${query ? `?${query}` : ""}`);
+export async function switchUser(userId: number): Promise<LoginResult> {
+  // Demo only. The server mints a real session for the target, so the app is
+  // genuinely that person afterwards rather than pretending locally.
+  const result = await request<LoginResult>("/auth/switch", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId }),
+  });
+  setToken(result.token);
+  return result;
 }
 
-export const getRequest = (id: number) => request<RefundRequestDetail>(`/requests/${id}`);
+export const getMe = () => request<User>("/auth/me");
 
-export const createRequest = (payload: NewRequest) =>
-  request<RefundRequestDetail>("/requests", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+export const getUsers = () => request<User[]>("/users");
 
-export const decideRequest = (
-  id: number,
-  payload: { action: "approved" | "rejected"; comment: string; confirm_risk: boolean },
-) =>
-  request<RefundRequestDetail>(`/requests/${id}/decision`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+export const getConfig = () => request<PlatformConfig>("/config");
+
+/** Tools this person holds. The server repeats the check on every tool call. */
+export const getApps = () => request<AppSummary[]>("/me/apps");

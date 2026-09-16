@@ -45,10 +45,10 @@ def test_wrong_password_and_unknown_id_are_indistinguishable(client, org):
 
 def test_logout_revokes_the_token(client, org):
     headers = auth(org["manager_a"])
-    assert client.get("/api/requests", headers=headers).status_code == 200
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 200
 
     assert client.post("/api/auth/logout", headers=headers).status_code == 204
-    assert client.get("/api/requests", headers=headers).status_code == 401
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 401
 
 
 def test_expired_token_is_rejected(client, org):
@@ -59,7 +59,31 @@ def test_expired_token_is_rejected(client, org):
         record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         session.commit()
 
-    assert client.get("/api/requests", headers=headers).status_code == 401
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 401
+
+
+def test_demo_switch_hands_back_a_real_session_for_the_target(client, org):
+    headers = auth(org["analyst_a"])
+    response = client.post(
+        "/api/auth/switch", json={"user_id": org["manager_a"].id}, headers=headers
+    )
+    assert response.status_code == 200
+    switched = {"Authorization": f"Bearer {response.json()['token']}"}
+
+    assert client.get("/api/auth/me", headers=switched).json()["id"] == org["manager_a"].id
+    # The identity you left behind goes with it, rather than staying live.
+    assert client.get("/api/auth/me", headers=headers).status_code == 401
+
+
+def test_demo_switch_needs_a_session_and_an_active_target(client, org, session):
+    assert client.post("/api/auth/switch", json={"user_id": org["admin"].id}).status_code == 401
+
+    org["manager_b"].is_active = False
+    session.commit()
+    blocked = client.post(
+        "/api/auth/switch", json={"user_id": org["manager_b"].id}, headers=auth(org["analyst_a"])
+    )
+    assert blocked.status_code == 400
 
 
 def test_token_decides_the_queue_not_a_client_supplied_id(client, org):

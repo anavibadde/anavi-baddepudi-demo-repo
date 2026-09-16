@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .models import Action, Reason, Role, Status
+from .models import AppRole, AppSlug, Role
 
 
 class UserOut(BaseModel):
@@ -15,11 +15,22 @@ class UserOut(BaseModel):
     email: str
     role: Role
     manager_id: int | None
+    is_active: bool
+
+
+class UserUpdate(BaseModel):
+    role: Role | None = None
+    manager_id: int | None = None
+    is_active: bool | None = None
 
 
 class LoginIn(BaseModel):
     user_id: int
     password: str = Field(min_length=1, max_length=200)
+
+
+class SwitchIn(BaseModel):
+    user_id: int
 
 
 class LoginOut(BaseModel):
@@ -28,49 +39,9 @@ class LoginOut(BaseModel):
     user: UserOut
 
 
-class EventOut(BaseModel):
-    id: int
-    action: Action
-    comment: str
-    created_at: datetime
-    actor: UserOut
-
-
-class RequestOut(BaseModel):
-    id: int
-    customer_id: str
-    customer_name: str
-    order_id: str
-    reason: Reason
-    amount_cents: int
-    currency: str
-    note: str
-    status: Status
-    risk_flags: list[str]
-    requires_admin: bool
-    created_at: datetime
-    decided_at: datetime | None
-    submitter: UserOut
-    decider: UserOut | None
-    can_decide: bool
-    decide_blocked_reason: str | None
-
-
-class RequestDetailOut(RequestOut):
-    events: list[EventOut]
-
-
-class RequestCreate(BaseModel):
-    customer_id: str = Field(min_length=1, max_length=40)
-    customer_name: str = Field(min_length=1, max_length=120)
-    order_id: str = Field(min_length=1, max_length=40)
-    reason: Reason
-    amount_cents: int = Field(gt=0, le=100_000_000)
-    note: str = Field(default="", max_length=2000)
-    idempotency_key: str | None = Field(default=None, max_length=64)
-
-
-class DecisionIn(BaseModel):
-    action: Action
-    comment: str = Field(default="", max_length=2000)
-    confirm_risk: bool = False
+class AppOut(BaseModel):
+    slug: AppSlug
+    name: str
+    description: str
+    path: str
+    app_role: AppRole
