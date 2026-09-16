@@ -29,6 +29,7 @@ class Role(str, enum.Enum):
 
 class AppSlug(str, enum.Enum):
     refunds = "refunds"
+    flags = "flags"
 
 
 class AppRole(str, enum.Enum):

@@ -227,6 +227,36 @@ Rejecting never needs risk confirmation, but always needs a comment — a declin
 the decision someone will later ask you to justify. Use the **Flagged only** filter
 to triage the risky queue first.
 
+## Feature flags (`/flags`)
+
+The second tool, and the only one that *does* something rather than recording a
+decision. Each flag holds a value per environment, both simulated in the same
+SQLite file.
+
+**Dev moves on the spot.** Anyone with `contributor` on the tool flips it; the
+change is written straight to the stored value and logged.
+
+**Production needs two people.** A contributor proposes a transition and a
+different `reviewer` approves it. Self-approval is refused by the backend, not
+hidden in the UI, and one flag can have only one open production request at a
+time.
+
+**The approval applies the exact proposal.** A request stores `from_value` and
+`to_value`. If production no longer equals `from_value` — someone else moved it
+in the meantime — the apply is refused as stale rather than rubber-stamping a
+value nobody reviewed. The same condition is re-checked inside the write, so
+the gap between reading and writing cannot be used to slip a change through.
+A stale request has to be withdrawn and proposed again against the current
+value.
+
+**You can see the effect.** The simulated customer page under the table is
+rendered from `/api/flags/effective/{environment}`, which reads the same rows
+an approval writes. Approve a production change and the page changes — the
+change is configuration, not a log entry.
+
+Everything is appended to a per-flag history: direct dev changes, proposals,
+approvals, rejections and withdrawals, each with who and when.
+
 ## Known gaps — read before reusing this on real money
 
 This is a review tool, not a refund system. The queue, the authorization and the
@@ -336,8 +366,10 @@ backend/app/deps.py            current user, and the gate on holding a tool
 backend/app/main.py            shell HTTP layer: login, users, /api/me/apps
 backend/app/seed.py            fake org chart, grants and ~54 requests
 backend/app/refunds/           refund models, risk, rules and routes
+backend/app/flags/             flag state, change requests, maker-checker rules
 frontend/src/shell/            login, home tiles, identity switcher, routing
 frontend/src/apps/refunds/     queue, detail drawer, submit form
+frontend/src/apps/flags/       flag table, change drawer, simulated surface
 ```
 
 ## Tests and lint

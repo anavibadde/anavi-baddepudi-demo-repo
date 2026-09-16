@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from .flags import models as flags_models  # noqa: F401  (registers tables on Base)
 from .models import Base
 from .refunds import models as refunds_models  # noqa: F401  (registers tables on Base)
 

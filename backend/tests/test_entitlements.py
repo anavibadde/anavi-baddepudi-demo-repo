@@ -16,8 +16,8 @@ def test_home_lists_only_the_tools_the_caller_holds(client, org, session):
 
     # Platform admins hold every tool without needing a row per person.
     admin = client.get("/api/me/apps", headers=auth(org["admin"])).json()
-    assert [app["slug"] for app in admin] == ["refunds"]
-    assert admin[0]["app_role"] == AppRole.admin.value
+    assert [app["slug"] for app in admin] == [slug.value for slug in AppSlug]
+    assert {app["app_role"] for app in admin} == {AppRole.admin.value}
 
     session.delete(entitlement_for(session, org["analyst_a"], AppSlug.refunds))
     session.commit()
