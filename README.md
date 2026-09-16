@@ -6,6 +6,12 @@ approves or rejects it, and both see the decision history.
 **Nothing is executed.** Approving a request records a decision; no payment provider
 is called and no money moves.
 
+> [!IMPORTANT]
+> Before building on this: [Known gaps](#known-gaps--read-before-reusing-this-on-real-money)
+> lists what a real refund platform needs that this deliberately does not have, and
+> [Reuse for future internal tools](#reuse-for-future-internal-tools) covers what
+> ports to another review queue and what does not.
+
 ## Run it
 
 Two terminals.
@@ -31,6 +37,15 @@ Sign in with a **user id** and the shared demo password `refunds123`. The seed
 script prints every id with its name and role; a quick tour is id **1** (admin,
 sees everything), **3** (manager, sees her three reports), **9** (analyst, sees
 only her own).
+
+Once you are in, the **Viewing as** dropdown in the top bar swaps you to any
+other seeded person, so one browser can walk the analyst, manager and admin
+views. It is not a client-side toggle: the server issues a real session for
+whoever you pick and revokes the one you were holding, so every visibility and
+decision check runs against the new identity. It is also a backdoor — an
+authenticated user becoming anyone else without their password — so it is gated
+behind `DEMO_SWITCH`, which defaults on here. Run the API with `DEMO_SWITCH=0`
+and the endpoint 404s and the dropdown disappears.
 
 What the login is and is not: passwords are salted and stretched with pbkdf2,
 and a successful login mints a random token stored server-side, so signing out
@@ -190,6 +205,102 @@ What the flags *do*, in escalating order:
 Rejecting never needs risk confirmation, but always needs a comment — a decline is
 the decision someone will later ask you to justify. Use the **Flagged only** filter
 to triage the risky queue first.
+
+## Known gaps — read before reusing this on real money
+
+This is a review tool, not a refund system. The queue, the authorization and the
+audit log are the honest parts; everything below is deliberately absent, and each
+one is a way to pay a customer twice.
+
+> [!CAUTION]
+> **Nothing caps the total refunded against an order.** Three approved $40
+> refunds on a $50 order all pass, because each is checked in isolation. Closing
+> it means a refunded-to-date total per order, checked **at approval**, not at
+> submit — the order can be refunded elsewhere while a request sits pending.
+
+> [!CAUTION]
+> **The chargeback race is not handled.** A customer disputes with their bank
+> while the request is pending; approve it and they are paid twice. Real
+> platforms re-check dispute status at the moment of execution and block.
+
+> [!WARNING]
+> **Approval is not execution, and there is no execution.** When money actually
+> moves you need the provider's idempotency key on the *execution* call, plus a
+> visible `failed` state — an approved refund whose capture fails must land in a
+> queue someone works, not disappear.
+
+> [!WARNING]
+> **Decisions are final.** No withdraw, no appeal, no reversal. Every refund team
+> eventually needs "approved in error", and it has to be a new row in
+> `decision_events`, never an edit to an old one.
+
+> [!NOTE]
+> **Risk flags are a snapshot, not a live view.** They freeze at submit
+> (`risk.compute_flags`). A request reviewed a week later shows the risk as it
+> was, though the customer may have filed five more since. Keep the frozen copy
+> for the audit trail and recompute a second, live view for the reviewer.
+
+> [!NOTE]
+> **Currency is cosmetic.** The $1,000 threshold is applied to `amount_cents`
+> whatever the `currency` column says, so ¥1,000 and $1,000 are treated alike.
+
+> [!NOTE]
+> **The demo login is a demo login.** One shared password, tokens in
+> `localStorage`, no SSO, no reset, no rate limiting. See [Signing in](#signing-in).
+
+## Reuse for future internal tools
+
+Most of this repo is a *review queue* that happens to hold refunds: someone
+submits an item, someone senior enough decides it once, and the decision is
+kept forever. A KYC review queue or a feature-flag approval panel is the same
+skeleton with different nouns. What that means concretely:
+
+**Reusable as-is — the parts with no refund knowledge in them**
+
+| Component | What it gives you |
+| --- | --- |
+| `auth.py` + `LoginForm.tsx` | pbkdf2 hashing, server-side tokens, expiry, logout, and revocation on role change. Swap for SSO in anything real, but the session/revocation shape carries over. |
+| `rules.visible_requests` / `can_view` | org-chart scoping pushed into SQL, plus the one-hop fallback for deactivated reviewers and 404-not-403. Generic over the row type. |
+| `aging.py` | SLA tiers over a timestamp. Nothing in it knows what is aging. |
+| The conditional-write decision | `UPDATE ... WHERE status = 'pending'` → 409, and an append-only `decision_events`. This is the pattern worth copying most; it is what makes two reviewers safe. |
+| Queue shell — `RequestTable`, drawer, filters, paging, `format.ts` | list/detail/decide with a non-overlaying drawer. Columns are data-driven. |
+
+**Needs adapting — right shape, wrong domain**
+
+- **`risk.py`** — the *structure* (compute once at submit, store on the row, drive
+  escalation off the flag set) ports directly; the four heuristics do not. KYC
+  swaps in sanctions-list hits and document mismatch; feature flags swap in blast
+  radius or "touches billing". `requires_admin` stays a pure function of flags.
+- **`models.py` / `schemas.py`** — `User`, `Role`, `Status`, `Action` and
+  `DecisionEvent` survive; `RefundRequest`'s customer/order/amount/reason fields
+  are the part you replace. Note `amount_cents` as an integer is a refund-specific
+  choice — a KYC item has no amount at all.
+- **`seed.py`** — worth keeping as a habit (a demo is only as good as its fake
+  data, including the deliberate edge cases like Fern Doyle, who reports to no
+  one), but every row is refund-shaped.
+- **Two roles and one hop.** Analyst/manager/admin with a single decision is
+  enough here. KYC usually wants maker-checker with a named second reviewer;
+  feature flags usually want approval *per environment*. That is a change to
+  `check_can_decide`, not a rewrite.
+
+**Build from scratch — genuinely not here**
+
+- **Any real identity**: SSO/OIDC, groups synced from an IdP, MFA, audit of
+  logins. The demo's org chart is thirteen hand-seeded rows.
+- **Doing the thing you approved.** This tool records a decision and stops. A KYC
+  queue must write back to the identity provider; a flag panel must actually flip
+  the flag, with rollout, rollback and a kill switch. That integration — retries,
+  idempotency, partial failure, reconciliation — is bigger than everything here.
+- **Migrations.** Tables are created with `create_all()` against a SQLite file
+  that the seed script drops. Anything with real data needs Alembic and Postgres.
+- **File and document handling**, which KYC is mostly made of: uploads, PII at
+  rest, retention and redaction. No concept of an attachment exists.
+- **Notifications, SLA escalation, reporting, bulk actions.** The queue shows
+  overdue; nobody is told, and nothing can be actioned in bulk.
+
+Rough split for a second tool on this base: the queue, auth, scoping and audit
+log are days, the domain model and risk rules are the real design work, and the
+write-back integration is the project.
 
 ## Layout
 
