@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 
-import { ApiError, decideRequest, getRequest } from "../api";
-import { blockedReason, humanize, money, waited, when } from "../format";
-import type { Config, RefundRequestDetail } from "../types";
+import { ApiError } from "../../api";
+import { decideRequest, getRequest } from "./api";
+import { blockedReason, humanize, money, waited, when } from "../../format";
+import type { RefundRequestDetail, RefundsConfig } from "./types";
 import { RiskFlags } from "./RiskFlags";
 
 interface Props {
   requestId: number;
-  config: Config;
+  config: RefundsConfig;
   onDecided: () => void;
   onClose: () => void;
 }

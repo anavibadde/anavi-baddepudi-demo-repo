@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
+from .refunds import models as refunds_models  # noqa: F401  (registers tables on Base)
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "refunds.db"
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DEFAULT_DB_PATH}")

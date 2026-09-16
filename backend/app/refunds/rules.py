@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from sqlalchemy import Select, or_, select
 
-from .models import Action, RefundRequest, Role, Status, User
+from ..models import Role, User
+from .models import Action, RefundRequest, Status
 from .risk import requires_admin, requires_confirmation
 
 

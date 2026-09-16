@@ -1,26 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { ApiError, getConfig, getMe, getRequests, logout, setToken, storedToken } from "./api";
-import { LoginForm } from "./components/LoginForm";
-import { NewRequestForm } from "./components/NewRequestForm";
-import { RequestDetail } from "./components/RequestDetail";
-import { RequestTable } from "./components/RequestTable";
-import { ViewAs } from "./components/ViewAs";
+import { getApps, getConfig, getMe, logout, setToken, storedToken } from "./api";
+import { RefundsApp } from "./apps/refunds/RefundsApp";
+import { Home } from "./shell/Home";
+import { LoginForm } from "./shell/LoginForm";
+import { Link } from "./shell/Link";
+import { navigate, usePath } from "./shell/router";
+import { ViewAs } from "./shell/ViewAs";
 import "./App.css";
-import type { Config, RefundRequest, Status, User } from "./types";
+import type { AppSummary, PlatformConfig, User } from "./types";
 
 export default function App() {
-  const [config, setConfig] = useState<Config | null>(null);
+  const [config, setConfig] = useState<PlatformConfig | null>(null);
   const [viewer, setViewer] = useState<User | null>(null);
+  const [apps, setApps] = useState<AppSummary[]>([]);
   const [restoring, setRestoring] = useState(storedToken() !== null);
-  const [requests, setRequests] = useState<RefundRequest[]>([]);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(1);
-  const [status, setStatus] = useState<Status | "">("pending");
-  const [flaggedOnly, setFlaggedOnly] = useState(false);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [composing, setComposing] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const path = usePath();
 
   useEffect(() => {
     getConfig()
@@ -37,62 +34,54 @@ export default function App() {
       .finally(() => setRestoring(false));
   }, []);
 
-  // One request for however many pages are on screen, so refreshing after a
-  // decision doesn't collapse the list back to page one.
-  const refresh = useCallback(() => {
-    if (!viewer || !config) return;
-    getRequests({ status, flagged: flaggedOnly, limit: config.page_size * pages })
-      .then((page) => {
-        setRequests(page.items);
-        setTotal(page.total);
-      })
-      .catch((err: ApiError) => {
-        if (err.status === 401) {
-          setToken(null);
-          setViewer(null);
-          return;
-        }
-        setError("Could not load requests.");
-      });
-  }, [viewer, config, status, flaggedOnly, pages]);
-
-  useEffect(refresh, [refresh]);
-
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedId(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+    if (!viewer) return;
+    getApps()
+      .then(setApps)
+      .catch(() => setApps([]));
+  }, [viewer]);
+
+  const onDrawerChange = useCallback((open: boolean) => setDrawerOpen(open), []);
+
+  function signedInAs(user: User) {
+    setViewer(user);
+    setDrawerOpen(false);
+  }
 
   function switchedTo(user: User) {
-    setViewer(user);
-    setSelectedId(null);
-    setPages(1);
+    // The new identity may hold a different set of tools, so land on home
+    // rather than inside a tool they may no longer be able to open.
+    signedInAs(user);
+    navigate("/");
   }
 
   async function signOut() {
     await logout();
     setViewer(null);
-    setSelectedId(null);
-    setRequests([]);
-    setTotal(0);
+    setApps([]);
+    setDrawerOpen(false);
+    navigate("/");
   }
 
   if (error) return <main className="shell error">{error}</main>;
   if (!config || restoring) return <main className="shell">Loading…</main>;
-  if (!viewer) return <LoginForm onSignedIn={setViewer} />;
+  if (!viewer) return <LoginForm onSignedIn={signedInAs} />;
 
-  const overdueCount = requests.filter((request) => request.aging === "overdue").length;
+  const held = apps.find((app) => app.path === path);
+  const inTool = held !== undefined;
 
   return (
-    <main className={selectedId === null ? "shell" : "shell drawer-open"}>
+    <main className={drawerOpen ? "shell drawer-open" : "shell"}>
       <header className="topbar">
-        <h1>Refund review</h1>
+        <div className="brand">
+          <Link to="/" className="home-link">
+            Internal tools
+          </Link>
+          {inTool && <span className="crumb">{held.name}</span>}
+        </div>
         <div className="session">
           {config.demo_switch ? (
-            <ViewAs viewer={viewer} onSwitched={switchedTo} />
+            <ViewAs viewer={viewer} notice={config.demo_notice} onSwitched={switchedTo} />
           ) : (
             <span className="muted">
               {viewer.name} <span className="small">({viewer.role})</span>
@@ -102,76 +91,29 @@ export default function App() {
         </div>
       </header>
 
-      <section className="controls">
-        <div className="filters">
-          {(["pending", "approved", "rejected", ""] as const).map((value) => (
-            <button
-              key={value || "all"}
-              className={status === value ? "chip active" : "chip"}
-              onClick={() => {
-                setStatus(value);
-                setPages(1);
-              }}
-            >
-              {value === "" ? "All" : value}
-            </button>
-          ))}
-          <label className="chip checkbox">
-            <input
-              type="checkbox"
-              checked={flaggedOnly}
-              onChange={(event) => {
-                setFlaggedOnly(event.target.checked);
-                setPages(1);
-              }}
-            />
-            Flagged only
-          </label>
-        </div>
-        <div className="right-controls">
-          <span className="muted small">
-            Showing {requests.length} of {total}
-            {overdueCount > 0 && <span className="overdue-count"> · {overdueCount} overdue</span>}
-          </span>
-          <button className="approve" onClick={() => setComposing(true)}>
-            New request
-          </button>
-        </div>
-      </section>
-
-      <RequestTable
-        requests={requests}
-        config={config}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-      />
-
-      {requests.length < total && (
-        <div className="load-more">
-          <button onClick={() => setPages((n) => n + 1)}>Load more</button>
-        </div>
-      )}
-
-      {selectedId !== null && (
-        <RequestDetail
-          key={`${viewer.id}-${selectedId}`}
-          requestId={selectedId}
-          config={config}
-          onDecided={refresh}
-          onClose={() => setSelectedId(null)}
+      {path === "/refunds" && inTool ? (
+        <RefundsApp
+          // Remount per identity: a row selected as someone else must not stay
+          // open against a queue they cannot see.
+          key={viewer.id}
+          viewer={viewer}
+          onSignedOut={() => setViewer(null)}
+          onDrawerChange={onDrawerChange}
         />
-      )}
-
-      {composing && (
-        <NewRequestForm
-          config={config}
-          onClose={() => setComposing(false)}
-          onCreated={(id) => {
-            setComposing(false);
-            setSelectedId(id);
-            refresh();
-          }}
-        />
+      ) : path === "/" ? (
+        <Home viewer={viewer} apps={apps} notice={config.demo_notice} />
+      ) : (
+        <section className="home">
+          <h2>Not available</h2>
+          <p className="muted">
+            {inTool
+              ? "This tool has no screen yet."
+              : "You do not have access to this tool, or it does not exist."}
+          </p>
+          <Link to="/" className="chip">
+            Back to your tools
+          </Link>
+        </section>
       )}
     </main>
   );

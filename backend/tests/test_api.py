@@ -15,21 +15,21 @@ BASE = {
 
 def submit(client, user, **overrides):
     payload = {**BASE, **overrides}
-    response = client.post("/api/requests", json=payload, headers=auth(user))
+    response = client.post("/api/refunds/requests", json=payload, headers=auth(user))
     assert response.status_code == 201, response.text
     return response.json()
 
 
 def decide(client, user, request_id, action, **payload):
     return client.post(
-        f"/api/requests/{request_id}/decision",
+        f"/api/refunds/requests/{request_id}/decision",
         json={"action": action, **payload},
         headers=auth(user),
     )
 
 
 def listed_ids(client, user, **params):
-    response = client.get("/api/requests", params=params, headers=auth(user))
+    response = client.get("/api/refunds/requests", params=params, headers=auth(user))
     assert response.status_code == 200, response.text
     return [r["id"] for r in response.json()["items"]]
 
@@ -53,7 +53,7 @@ def test_manager_sees_direct_reports_and_admin_sees_all(client, org):
 
 def test_out_of_line_request_is_404_not_403(client, org):
     other = submit(client, org["analyst_b"])
-    response = client.get(f"/api/requests/{other['id']}", headers=auth(org["manager_a"]))
+    response = client.get(f"/api/refunds/requests/{other['id']}", headers=auth(org["manager_a"]))
     assert response.status_code == 404
 
 
@@ -99,7 +99,9 @@ def test_history_records_submission_and_decision(client, org):
     request = submit(client, org["analyst_a"])
     decide(client, org["manager_a"], request["id"], "approved", comment="Verified.")
 
-    detail = client.get(f"/api/requests/{request['id']}", headers=auth(org["analyst_a"])).json()
+    detail = client.get(
+        f"/api/refunds/requests/{request['id']}", headers=auth(org["analyst_a"])
+    ).json()
     assert [e["action"] for e in detail["events"]] == ["submitted", "approved"]
     assert detail["events"][1]["actor"]["email"] == org["manager_a"].email
 
@@ -173,4 +175,4 @@ def test_status_filter(client, org, status):
     [{}, {"Authorization": "Bearer not-a-real-token"}, {"Authorization": "Basic whatever"}],
 )
 def test_requests_require_a_valid_session(client, org, headers):
-    assert client.get("/api/requests", headers=headers).status_code == 401
+    assert client.get("/api/refunds/requests", headers=headers).status_code == 401

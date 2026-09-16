@@ -9,18 +9,10 @@ from sqlalchemy.orm import Session
 
 from .auth import hash_password
 from .db import SessionLocal, create_all, engine
-from .models import (
-    Action,
-    Base,
-    DecisionEvent,
-    Reason,
-    RefundRequest,
-    Role,
-    Status,
-    User,
-    utcnow,
-)
-from .risk import compute_flags
+from .entitlements import grant
+from .models import AppRole, AppSlug, Base, Role, User, utcnow
+from .refunds.models import Action, DecisionEvent, Reason, RefundRequest, Status
+from .refunds.risk import compute_flags
 
 # Everyone shares one password: a fake org of thirteen is not worth thirteen
 # secrets, and the README has to print it anyway.
@@ -41,6 +33,13 @@ ORG = [
     ("Omar Haddad", "omar@example.com", Role.analyst, "ines@example.com"),
     ("Fern Doyle", "fern@example.com", Role.analyst, None),  # no manager: admin-only queue
 ]
+
+# Grants are per tool, so the home page differs by person rather than showing
+# everyone everything. Platform admins hold every tool implicitly.
+REFUND_ROLES = {
+    Role.manager: AppRole.reviewer,
+    Role.analyst: AppRole.contributor,
+}
 
 CUSTOMERS = [
     ("CUS-1041", "Elena Fischer"),
@@ -95,6 +94,12 @@ def seed(session: Session, *, count: int = 54, rng: random.Random | None = None)
     for _, email, _, manager_email in ORG:
         if manager_email:
             by_email[email].manager_id = by_email[manager_email].id
+    session.flush()
+
+    for user in by_email.values():
+        app_role = REFUND_ROLES.get(user.role)
+        if app_role is not None:
+            grant(session, user, AppSlug.refunds, app_role)
     session.flush()
 
     submitters = [u for u in by_email.values() if u.role is not Role.admin]

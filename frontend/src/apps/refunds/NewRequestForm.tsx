@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { ApiError, createRequest } from "../api";
-import { humanize } from "../format";
-import type { Config } from "../types";
+import { ApiError } from "../../api";
+import { createRequest } from "./api";
+import { humanize } from "../../format";
+import type { RefundsConfig } from "./types";
 
 interface Props {
-  config: Config;
+  config: RefundsConfig;
   onCreated: (id: number) => void;
   onClose: () => void;
 }
