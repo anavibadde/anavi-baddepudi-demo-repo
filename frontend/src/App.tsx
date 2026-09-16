@@ -9,6 +9,7 @@ import {
   storedToken,
 } from "./api";
 import { FlagsApp } from "./apps/flags/FlagsApp";
+import { KycApp } from "./apps/kyc/KycApp";
 import { RefundsApp } from "./apps/refunds/RefundsApp";
 import { Home } from "./shell/Home";
 import { LoginForm } from "./shell/LoginForm";
@@ -121,6 +122,13 @@ export default function App() {
         />
       ) : path === "/flags" && inTool ? (
         <FlagsApp
+          key={viewer.id}
+          viewer={viewer}
+          onSignedOut={() => setViewer(null)}
+          onDrawerChange={onDrawerChange}
+        />
+      ) : path === "/kyc" && inTool ? (
+        <KycApp
           key={viewer.id}
           viewer={viewer}
           onSignedOut={() => setViewer(null)}

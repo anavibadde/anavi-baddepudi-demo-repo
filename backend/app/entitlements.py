@@ -36,6 +36,12 @@ REGISTRY: tuple[AppInfo, ...] = (
         description="Dev toggles, production change requests and approvals.",
         path="/flags",
     ),
+    AppInfo(
+        slug=AppSlug.kyc,
+        name="KYC review",
+        description="Shared applicant queue with claiming and two-person sign-off.",
+        path="/kyc",
+    ),
 )
 
 APPS: dict[AppSlug, AppInfo] = {info.slug: info for info in REGISTRY}

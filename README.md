@@ -13,9 +13,9 @@ is called and no money moves.
 > [Reuse for future internal tools](#reuse-for-future-internal-tools) covers what
 > ports to another review queue and what does not.
 
-## Run it
+## Try the demo
 
-Two terminals.
+Two terminals, then open <http://localhost:5173>.
 
 ```bash
 # backend — http://127.0.0.1:8000
@@ -31,6 +31,46 @@ cd frontend
 npm install
 npm run dev
 ```
+
+### Logging in
+
+The sign-in form wants a **user id** (the number, not a name or email) and the
+shared password `refunds123`. Everyone seeded uses that same password. The seed
+script prints the full list of ids; these four cover the interesting cases:
+
+| id | Who | Holds | Worth seeing |
+| --- | --- | --- | --- |
+| `1` | Priya Raman, platform admin | all three tools | every refund request, and the only person who can decide the admin-only ones |
+| `2` | Marco Silva, manager | refunds, flags, KYC | approves production flag changes; signs off KYC cases he did not recommend |
+| `4` | Ines Roth, manager | refunds, flags, KYC | proposes production flag changes but cannot approve her own |
+| `9` | Rita Alvarez, analyst | refunds, KYC (read-only) | no flags tile at all, and only her own refund requests |
+
+Once you are in, the **Viewing as** dropdown in the top bar jumps you to any of
+the thirteen seeded people without signing out, so one browser can walk every
+role. It is a deliberate demo backdoor and is described under
+[Signing in](#signing-in).
+
+### A five-minute tour
+
+1. **Home** lists only the tools you hold. Compare Rita (id `9`) with Marco
+   (id `2`); typing `/flags` into the address bar as Rita gets her nowhere,
+   because the API answers the same call with a 404 whoever asks without the
+   grant.
+2. **Refunds** (`/refunds`) as Marco: pick a request with a red risk badge and
+   note that approve stays locked until you tick the confirmation, and that a
+   high-value request carrying a second flag will not unlock for him at all —
+   that one needs Priya.
+3. **Flags** (`/flags`) as Ines: flip a flag in dev and watch the demo surface
+   change immediately, then propose the same change in prod. Switch to Marco to
+   approve it; Ines cannot approve her own proposal.
+4. **KYC** (`/kyc`) as Anya (id `5`): claim a case and recommend an outcome,
+   then switch to Marco to sign it off. Anya cannot sign off her own
+   recommendation, and an unattended claim lapses after four hours so nothing
+   stays parked.
+
+Nothing here touches the outside world: no payment provider, no KYC vendor and
+no real flag service. Re-run `python -m app.seed` at any point to wipe whatever
+you did and start clean.
 
 ## Access: signing in grants nothing
 
@@ -51,14 +91,7 @@ sees their own line of the org chart under the rules below.
 
 ## Signing in
 
-Sign in with a **user id** and the shared demo password `refunds123`. The seed
-script prints every id with its name and role; a quick tour is id **1** (admin,
-sees everything), **3** (manager, sees her three reports), **9** (analyst, sees
-only her own).
-
-Once you are in, the **Viewing as** dropdown in the top bar swaps you to any
-other seeded person, so one browser can walk the analyst, manager and admin
-views. It is not a client-side toggle: the server issues a real session for
+The **Viewing as** dropdown is not a client-side toggle: the server issues a real session for
 whoever you pick and revokes the one you were holding, so every visibility and
 decision check runs against the new identity. It is also a backdoor — an
 authenticated user becoming anyone else without their password — so it is gated
@@ -256,6 +289,38 @@ change is configuration, not a log entry.
 
 Everything is appended to a per-flag history: direct dev changes, proposals,
 approvals, rejections and withdrawals, each with who and when.
+
+## KYC review (`/kyc`)
+
+The third tool, and back to recording decisions only — no vendor, no document
+store, no sanctions list. What it does model is how a review team actually
+divides the work.
+
+**One shared pool, not the org chart.** Refund visibility follows who reports to
+whom; KYC does not. Every entitled reviewer sees every case, and work is divided
+by claiming rather than by routing.
+
+**Claiming is a lock with a timer.** Taking a case writes the claim with a
+conditional update, so two reviewers clicking at once cannot both hold it — the
+loser is told someone else has it. A claim lapses after four hours, which is what
+stops a case being parked forever by someone who went on leave; the takeover is
+recorded as a distinct `claim_expired` event rather than quietly reassigning it.
+
+**Maker-checker.** The claim holder recommends approve or reject; that is not a
+decision. A different reviewer signs it off, and the backend refuses sign-off by
+the person who recommended it. Sign-off applies the *stored* recommendation, so
+the checker agrees or disagrees rather than substituting an outcome of their own.
+
+**Disagreement and missing documents both reopen the case.** A checker who
+disagrees sends it back to the pool for a fresh review cycle, and "request more
+info" parks it until the documents arrive. Neither edits the history: the cycle
+counter increments and the earlier events stay exactly where they are.
+
+```text
+new → claimed → recommended → approved
+                            → rejected
+                            → needs_info → new
+```
 
 ## Known gaps — read before reusing this on real money
 
