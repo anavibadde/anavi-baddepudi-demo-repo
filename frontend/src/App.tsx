@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getConfig, getRequests, getUsers } from "./api";
+import { ApiError, getConfig, getMe, getRequests, logout, setToken, storedToken } from "./api";
+import { LoginForm } from "./components/LoginForm";
 import { NewRequestForm } from "./components/NewRequestForm";
 import { RequestDetail } from "./components/RequestDetail";
 import { RequestTable } from "./components/RequestTable";
@@ -9,8 +10,8 @@ import type { Config, RefundRequest, Status, User } from "./types";
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
   const [viewer, setViewer] = useState<User | null>(null);
+  const [restoring, setRestoring] = useState(storedToken() !== null);
   const [requests, setRequests] = useState<RefundRequest[]>([]);
   const [status, setStatus] = useState<Status | "">("pending");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -19,20 +20,32 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getConfig(), getUsers()])
-      .then(([loadedConfig, loadedUsers]) => {
-        setConfig(loadedConfig);
-        setUsers(loadedUsers);
-        setViewer(loadedUsers.find((user) => user.role === "manager") ?? loadedUsers[0] ?? null);
-      })
+    getConfig()
+      .then(setConfig)
       .catch(() => setError("Could not reach the API. Is the backend running on port 8000?"));
+  }, []);
+
+  useEffect(() => {
+    // A token in localStorage may be expired or revoked; the server decides.
+    if (storedToken() === null) return;
+    getMe()
+      .then(setViewer)
+      .catch(() => setToken(null))
+      .finally(() => setRestoring(false));
   }, []);
 
   const refresh = useCallback(() => {
     if (!viewer) return;
-    getRequests(viewer.id, { status, flagged: flaggedOnly })
+    getRequests({ status, flagged: flaggedOnly })
       .then(setRequests)
-      .catch(() => setError("Could not load requests."));
+      .catch((err: ApiError) => {
+        if (err.status === 401) {
+          setToken(null);
+          setViewer(null);
+          return;
+        }
+        setError("Could not load requests.");
+      });
   }, [viewer, status, flaggedOnly]);
 
   useEffect(refresh, [refresh]);
@@ -45,8 +58,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  async function signOut() {
+    await logout();
+    setViewer(null);
+    setSelectedId(null);
+    setRequests([]);
+  }
+
   if (error) return <main className="shell error">{error}</main>;
-  if (!config || !viewer) return <main className="shell">Loading…</main>;
+  if (!config || restoring) return <main className="shell">Loading…</main>;
+  if (!viewer) return <LoginForm onSignedIn={setViewer} />;
 
   const pendingCount = requests.filter((request) => request.status === "pending").length;
 
@@ -54,23 +75,12 @@ export default function App() {
     <main className={selectedId === null ? "shell" : "shell drawer-open"}>
       <header className="topbar">
         <h1>Refund review</h1>
-        <label className="viewer">
-          Viewing as
-          <select
-            value={viewer.id}
-            onChange={(event) => {
-              const next = users.find((user) => user.id === Number(event.target.value));
-              setViewer(next ?? viewer);
-              setSelectedId(null);
-            }}
-          >
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} ({user.role})
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="session">
+          <span className="muted">
+            {viewer.name} <span className="small">({viewer.role})</span>
+          </span>
+          <button onClick={signOut}>Sign out</button>
+        </div>
       </header>
 
       <section className="controls">
@@ -114,7 +124,6 @@ export default function App() {
         <RequestDetail
           key={`${viewer.id}-${selectedId}`}
           requestId={selectedId}
-          viewer={viewer}
           config={config}
           onDecided={refresh}
           onClose={() => setSelectedId(null)}
@@ -123,7 +132,6 @@ export default function App() {
 
       {composing && (
         <NewRequestForm
-          viewer={viewer}
           config={config}
           onClose={() => setComposing(false)}
           onCreated={(id) => {

@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
+from .auth import authenticate, issue_token, revoke_token, user_for_token
 from .db import create_all, get_session
 from .models import Action, DecisionEvent, Reason, RefundRequest, Status, User, utcnow
 from .risk import FLAG_LABELS, HIGH_VALUE_CENTS, compute_flags, requires_admin
@@ -16,6 +18,8 @@ from .rules import DecisionDenied, can_view, check_can_decide, visible_requests
 from .schemas import (
     DecisionIn,
     EventOut,
+    LoginIn,
+    LoginOut,
     RequestCreate,
     RequestDetailOut,
     RequestOut,
@@ -39,14 +43,20 @@ app.add_middleware(
 )
 
 
+def bearer_token(authorization: str = Header(default="")) -> str:
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return token
+
+
 def current_user(
-    x_user_id: int = Header(..., alias="X-User-Id"),
+    token: str = Depends(bearer_token),
     session: Session = Depends(get_session),
 ) -> User:
-    """Demo authentication: the client asserts who it is. Never do this for real."""
-    user = session.get(User, x_user_id)
+    user = user_for_token(session, token)
     if user is None:
-        raise HTTPException(status_code=401, detail="unknown_user")
+        raise HTTPException(status_code=401, detail="invalid_session")
     return user
 
 
@@ -109,6 +119,28 @@ def _load_visible(request_id: int, viewer: User, session: Session) -> RefundRequ
     return request
 
 
+@app.post("/api/auth/login", response_model=LoginOut)
+def login(payload: LoginIn, session: Session = Depends(get_session)) -> dict:
+    user = authenticate(session, user_id=payload.user_id, password=payload.password)
+    if user is None:
+        # One message for both wrong id and wrong password: saying which is wrong
+        # tells an outsider which ids exist.
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    record = issue_token(session, user)
+    return {"token": record.token, "expires_at": record.expires_at, "user": user}
+
+
+@app.post("/api/auth/logout", status_code=204, response_model=None)
+def logout(token: str = Depends(bearer_token), session: Session = Depends(get_session)) -> Response:
+    revoke_token(session, token)
+    return Response(status_code=204)
+
+
+@app.get("/api/auth/me", response_model=UserOut)
+def me(viewer: User = Depends(current_user)) -> User:
+    return viewer
+
+
 @app.get("/api/config")
 def get_config() -> dict:
     return {
@@ -120,7 +152,10 @@ def get_config() -> dict:
 
 
 @app.get("/api/users", response_model=list[UserOut])
-def list_users(session: Session = Depends(get_session)) -> list[User]:
+def list_users(
+    _: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> list[User]:
     return list(session.scalars(select(User).order_by(User.role, User.name)))
 
 

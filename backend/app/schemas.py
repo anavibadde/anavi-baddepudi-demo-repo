@@ -17,6 +17,17 @@ class UserOut(BaseModel):
     manager_id: int | None
 
 
+class LoginIn(BaseModel):
+    user_id: int
+    password: str = Field(min_length=1, max_length=200)
+
+
+class LoginOut(BaseModel):
+    token: str
+    expires_at: datetime
+    user: UserOut
+
+
 class EventOut(BaseModel):
     id: int
     action: Action
